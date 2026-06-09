@@ -1,0 +1,1536 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  api/
+    calendar/
+      route.ts
+    weather/
+      route.ts
+  components/
+    CalendarTimeline.tsx
+    ClientDashboard.tsx
+    MealPlanner.tsx
+    WeatherSummary.tsx
+  favicon.ico
+  globals.css
+  layout.tsx
+  page.tsx
+  providers.tsx
+public/
+  file.svg
+  globe.svg
+  next.svg
+  vercel.svg
+  window.svg
+.gitignore
+AGENTS.md
+CLAUDE.md
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/api/calendar/route.ts">
+import { NextResponse } from "next/server";
+
+const calendarUrls = [
+  process.env.GOOGLE_CALENDAR_ICS_URL,
+  process.env.OUTLOOK_CALENDAR_ICS_URL,
+].filter(Boolean) as string[];
+
+const sampleCalendar = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Example Corp.//Household Command Center//EN
+BEGIN:VEVENT
+UID:1
+DTSTAMP:20250623T080000Z
+DTSTART:20250623T080000Z
+DTEND:20250623T170000Z
+SUMMARY:Nikoo Babysitting
+DESCRIPTION:Home care session.
+END:VEVENT
+BEGIN:VEVENT
+UID:2
+DTSTAMP:20250623T090000Z
+DTSTART:20250624T090000Z
+DTEND:20250624T110000Z
+SUMMARY:MOPA
+DESCRIPTION:Art project planning.
+END:VEVENT
+BEGIN:VEVENT
+UID:3
+DTSTAMP:20250625T080000Z
+DTSTART:20250625T080000Z
+DTEND:20250625T170000Z
+SUMMARY:Daycare
+DESCRIPTION:Kids care and pickup.
+END:VEVENT
+END:VCALENDAR`;
+
+function unfoldIcs(raw: string) {
+  return raw.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+}
+
+function parseDate(value: string) {
+  const trimmed = value.trim();
+  if (/^\d{8}T\d{6}Z$/.test(trimmed)) {
+    return new Date(trimmed);
+  }
+  if (/^\d{8}T\d{6}$/.test(trimmed)) {
+    return new Date(`${trimmed.slice(0, 4)}-${trimmed.slice(4, 6)}-${trimmed.slice(6, 8)}T${trimmed.slice(9)}`);
+  }
+  if (/^\d{8}$/.test(trimmed)) {
+    return new Date(`${trimmed.slice(0, 4)}-${trimmed.slice(4, 6)}-${trimmed.slice(6)}`);
+  }
+  return new Date(trimmed);
+}
+
+function parseIcs(content: string) {
+  const unfolded = unfoldIcs(content);
+  return unfolded
+    .split("BEGIN:VEVENT")
+    .slice(1)
+    .map((block) => {
+      const summaryMatch = block.match(/SUMMARY:(.+)/i);
+      const startMatch = block.match(/DTSTART(?:;[^:]*)?:(.+)/i);
+      const endMatch = block.match(/DTEND(?:;[^:]*)?:(.+)/i);
+      const descriptionMatch = block.match(/DESCRIPTION:(.+)/i);
+      const summary = summaryMatch?.[1]?.trim() ?? "Untitled event";
+      const start = startMatch ? parseDate(startMatch[1]) : new Date();
+      const end = endMatch ? parseDate(endMatch[1]) : new Date(start.getTime() + 60 * 60 * 1000);
+      const description = descriptionMatch?.[1]?.trim() ?? "";
+      return { summary, start, end, description };
+    })
+    .filter((event) => !Number.isNaN(event.start.getTime()));
+}
+
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export async function GET() {
+  try {
+    const responses = await Promise.all(
+      calendarUrls.length
+        ? calendarUrls.map((url) => fetch(url).then((res) => res.text()))
+        : [Promise.resolve(sampleCalendar)]
+    );
+
+    const events = responses.flatMap((text) => parseIcs(text));
+    const upcoming = events
+      .filter((event) => event.start.getTime() >= Date.now())
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+      .slice(0, 6)
+      .map((event) => ({
+        title: event.summary,
+        start: formatDate(event.start),
+        end: formatDate(event.end),
+        description: event.description,
+      }));
+
+    return NextResponse.json({ events: upcoming });
+  } catch (error) {
+    return NextResponse.json({ error: "Unable to load calendar events" }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/weather/route.ts">
+import { NextResponse } from "next/server";
+
+const latitude = process.env.WEATHER_LAT ?? "46.5547";
+const longitude = process.env.WEATHER_LON ?? "15.6459";
+
+const weatherCodeMap: Record<number, string> = {
+  0: "Clear",
+  1: "Mainly clear",
+  2: "Partly cloudy",
+  3: "Cloudy",
+  45: "Fog",
+  48: "Depositing rime fog",
+  51: "Light drizzle",
+  53: "Moderate drizzle",
+  55: "Dense drizzle",
+  56: "Freezing drizzle",
+  57: "Dense freezing drizzle",
+  61: "Slight rain",
+  63: "Moderate rain",
+  65: "Heavy rain",
+  66: "Freezing rain",
+  67: "Heavy freezing rain",
+  71: "Slight snow",
+  73: "Moderate snow",
+  75: "Heavy snow",
+  77: "Snow grains",
+  80: "Slight rain showers",
+  81: "Moderate rain showers",
+  82: "Violent rain showers",
+  85: "Slight snow showers",
+  86: "Heavy snow showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with slight hail",
+  99: "Thunderstorm with heavy hail",
+};
+
+function formatForecast(daily: any) {
+  return daily.time.slice(0, 4).map((date: string, index: number) => ({
+    date,
+    high: daily.temperature_2m_max[index],
+    low: daily.temperature_2m_min[index],
+  }));
+}
+
+export async function GET() {
+  try {
+    const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto`;
+    const response = await fetch(endpoint, { next: { revalidate: 600 } });
+
+    if (!response.ok) {
+      return NextResponse.json({ error: "Weather provider error" }, { status: 502 });
+    }
+
+    const payload = await response.json();
+    const current = payload.current_weather;
+
+    return NextResponse.json({
+      current: {
+        temperature: current.temperature,
+        windspeed: current.windspeed,
+        weathercode: current.weathercode,
+        description: weatherCodeMap[current.weathercode] ?? "Unknown",
+      },
+      forecast: formatForecast(payload.daily),
+    });
+  } catch (error) {
+    return NextResponse.json({ error: "Unable to load weather" }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/components/CalendarTimeline.tsx">
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Box, Button, Card, CardContent, CircularProgress, IconButton, TextField, Typography } from "@mui/material";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
+
+interface CalendarEvent {
+  title: string;
+  start: string;
+  end: string;
+  description: string;
+}
+
+type TaskStatus = "pending" | "completed";
+
+interface TaskItem {
+  id: string;
+  title: string;
+  due: string;
+  status: TaskStatus;
+}
+
+const isOverdueTask = (task: TaskItem) => {
+  if (task.status === "completed") return false;
+  if (!task.due || task.due === "No due date") return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const taskDate = new Date(task.due);
+  taskDate.setHours(0, 0, 0, 0);
+  return taskDate < today;
+};
+
+export default function CalendarTimeline() {
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDue, setNewTaskDue] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetch("/api/calendar")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted) return;
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setEvents(data.events ?? []);
+        }
+      })
+      .catch(() => setError("Unable to load calendar events."))
+      .finally(() => mounted && setLoading(false));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("household-dashboard-tasks");
+    if (stored) {
+      try {
+        setTasks(JSON.parse(stored));
+      } catch {
+        setTasks([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("household-dashboard-tasks", JSON.stringify(tasks));
+  }, [tasks]);
+
+  const pendingTasks = useMemo(
+    () => tasks.filter((task) => task.status === "pending" && !isOverdueTask(task)),
+    [tasks]
+  );
+  const overdueTasks = useMemo(
+    () => tasks.filter((task) => task.status === "pending" && isOverdueTask(task)),
+    [tasks]
+  );
+  const completedTasks = useMemo(() => tasks.filter((task) => task.status === "completed"), [tasks]);
+
+  const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newTaskTitle.trim()) return;
+
+    const nextTask: TaskItem = {
+      id: `${Date.now()}-${newTaskTitle}`,
+      title: newTaskTitle.trim(),
+      due: newTaskDue || "No due date",
+      status: "pending",
+    };
+
+    setTasks((current) => [nextTask, ...current]);
+    setNewTaskTitle("");
+    setNewTaskDue("");
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setTasks((current) => current.filter((task) => task.id !== id));
+  };
+
+  const handleCompleteTask = (id: string) => {
+    setTasks((current) => current.map((task) => (task.id === id ? { ...task, status: "completed" } : task)));
+  };
+
+  return (
+    <Card sx={{ minHeight: 430, display: "flex", flexDirection: "column", justifyContent: "space-between" }} suppressHydrationWarning>
+      <CardContent>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Box>
+            <Typography variant="subtitle2" color="secondary">
+              Today&apos;s focus
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
+              Task timeline
+            </Typography>
+          </Box>
+          {loading ? <CircularProgress size={32} color="inherit" /> : null}
+        </Box>
+
+        {error ? (
+          <Typography color="error" sx={{ mt: 4 }}>
+            {error}
+          </Typography>
+        ) : (
+          <Box sx={{ display: "grid", gap: 2, mt: 4 }}>
+            {events.length > 0 ? (
+              events.map((event) => (
+                <Box key={event.title + event.start} sx={{ display: "flex", alignItems: "center", gap: 2, p: 2, bgcolor: "rgba(148,163,184,0.08)", borderRadius: 3 }}>
+                  <Box sx={{ width: 4, height: 40, borderRadius: 2, bgcolor: "primary.main" }} />
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>{event.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {event.start} — {event.end}
+                    </Typography>
+                    {event.description ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {event.description}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                </Box>
+              ))
+            ) : (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  This month
+                </Typography>
+                <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                    <Typography key={day} variant="caption" color="text.secondary" sx={{ textAlign: "center", fontWeight: 700, py: 1 }}>
+                      {day}
+                    </Typography>
+                  ))}
+                  {Array.from({ length: 42 }).map((_, i) => {
+                    const today = new Date();
+                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+                    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                    const dayNum = i - firstDay + 1;
+                    const isCurrentMonth = dayNum > 0 && dayNum <= daysInMonth;
+                    const isToday = isCurrentMonth && dayNum === today.getDate();
+                    
+                    return (
+                      <Box
+                        key={i}
+                        sx={{
+                          p: 1,
+                          textAlign: "center",
+                          borderRadius: 1,
+                          bgcolor: isToday ? "rgba(59, 130, 246, 0.2)" : isCurrentMonth ? "rgba(148,163,184,0.04)" : "transparent",
+                          border: isToday ? "1px solid rgba(59, 130, 246, 0.5)" : "1px solid rgba(255,255,255,0.05)",
+                          color: isCurrentMonth ? "inherit" : "text.secondary",
+                          fontSize: 12,
+                          fontWeight: isToday ? 700 : 400,
+                        }}
+                      >
+                        {isCurrentMonth ? dayNum : ""}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        <Box component="form" onSubmit={handleAddTask} sx={{ display: "grid", gap: 2, mt: 4 }}>
+          <Typography variant="subtitle2" color="secondary">
+            Add a task
+          </Typography>
+          <TextField
+            label="Task"
+            value={newTaskTitle}
+            onChange={(event) => setNewTaskTitle(event.target.value)}
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label="Due date"
+            type="date"
+            value={newTaskDue}
+            onChange={(event) => setNewTaskDue(event.target.value)}
+            size="small"
+            slotProps={{ inputLabel: { shrink: true } }}
+            fullWidth
+          />
+          <Button type="submit" variant="contained" disabled={!newTaskTitle.trim()}>
+            Add task
+          </Button>
+        </Box>
+
+        <Box sx={{ mt: 3 }}>
+          {overdueTasks.length > 0 ? (
+            <Box sx={{ display: "grid", gap: 1.5, mb: 2 }}>
+              <Typography variant="subtitle2" color="error">
+                Overdue tasks
+              </Typography>
+              {overdueTasks.map((task) => (
+                <Box key={task.id} sx={{ p: 2, bgcolor: "rgba(248,113,113,0.12)", borderRadius: 3, border: "1px solid rgba(248,113,113,0.3)" }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Due: {task.due}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <IconButton aria-label="complete" size="small" onClick={() => handleCompleteTask(task.id)}>
+                        <CheckCircleOutlinedIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton aria-label="delete" size="small" onClick={() => handleDeleteTask(task.id)}>
+                        <DeleteOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+
+          {pendingTasks.length > 0 ? (
+            <Box sx={{ display: "grid", gap: 1.5, mb: 2 }}>
+              <Typography variant="subtitle2" color="secondary">
+                Pending tasks
+              </Typography>
+              {pendingTasks.map((task) => (
+                <Box key={task.id} sx={{ p: 2, bgcolor: "rgba(148,163,184,0.08)", borderRadius: 3 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Due: {task.due}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <IconButton aria-label="complete" size="small" onClick={() => handleCompleteTask(task.id)}>
+                        <CheckCircleOutlinedIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton aria-label="delete" size="small" onClick={() => handleDeleteTask(task.id)}>
+                        <DeleteOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+
+          {completedTasks.length > 0 ? (
+            <Box sx={{ display: "grid", gap: 1.5 }}>
+              <Typography variant="subtitle2" color="success.main">
+                Completed tasks
+              </Typography>
+              {completedTasks.map((task) => (
+                <Box key={task.id} sx={{ p: 2, bgcolor: "rgba(34,197,94,0.12)", borderRadius: 3 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "center" }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Due: {task.due}
+                      </Typography>
+                    </Box>
+                    <IconButton aria-label="delete" size="small" onClick={() => handleDeleteTask(task.id)}>
+                      <DeleteOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+
+          {tasks.length === 0 ? (
+            <Typography color="text.secondary">Create a new task to keep the household organized.</Typography>
+          ) : null}
+        </Box>
+      </CardContent>
+      <Box sx={{ bgcolor: "rgba(255,255,255,0.03)", p: 2 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="body2" color="text.secondary">
+            Calendar sync is enabled.
+          </Typography>
+          <Button href="/api/calendar" size="small" sx={{ textTransform: "none" }}>
+            Refresh
+          </Button>
+        </Box>
+      </Box>
+    </Card>
+  );
+}
+</file>
+
+<file path="app/components/ClientDashboard.tsx">
+"use client";
+
+import { useState } from "react";
+import { Box, Button, Card, CardContent, Chip, Typography, Divider } from "@mui/material";
+import ThermostatIcon from "@mui/icons-material/Thermostat";
+
+interface CameraZone {
+  label: string;
+  active: boolean;
+}
+
+interface ClientDashboardProps {
+  cameraZones: CameraZone[];
+}
+
+export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
+  const [selectedCamera, setSelectedCamera] = useState(cameraZones.find((z) => z.active)?.label || "Nursery");
+
+  return (
+    <Card sx={{ minHeight: 420, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <Box sx={{ background: "linear-gradient(180deg, #0b172f 0%, #111b33 100%)", p: 3, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box>
+          <Typography variant="subtitle2" color="secondary">
+            Live Camera
+          </Typography>
+          <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
+            {selectedCamera} view
+          </Typography>
+        </Box>
+        <Chip label="Online" color="success" />
+      </Box>
+      <Box sx={{ flex: 1, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", display: "grid", placeItems: "center", p: 2 }}>
+        <Box sx={{ width: "100%", height: 260, borderRadius: 3, background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
+          <Typography variant="h6" color="text.secondary" sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
+            {selectedCamera} camera placeholder
+          </Typography>
+        </Box>
+      </Box>
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, p: 2 }}>
+        {cameraZones.map((zone) => (
+          <Button
+            key={zone.label}
+            variant={selectedCamera === zone.label ? "contained" : "outlined"}
+            color={selectedCamera === zone.label ? "primary" : "inherit"}
+            size="small"
+            sx={{ borderRadius: 99, textTransform: "none" }}
+            onClick={() => setSelectedCamera(zone.label)}
+          >
+            {zone.label}
+          </Button>
+        ))}
+      </Box>
+    </Card>
+  );
+}
+
+export function ClimateControl() {
+  const [temperature, setTemperature] = useState(20);
+
+  const handleIncrease = () => setTemperature((prev) => prev + 1);
+  const handleDecrease = () => setTemperature((prev) => prev - 1);
+
+  return (
+    <Card sx={{ minHeight: 205, overflow: "hidden" }}>
+      <CardContent>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Box>
+            <Typography variant="subtitle2" color="secondary">
+              Climate Control
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
+              Idle
+            </Typography>
+          </Box>
+          <ThermostatIcon sx={{ color: "#facc15", fontSize: 38 }} />
+        </Box>
+        <Typography variant="h1" sx={{ mt: 4, fontWeight: 700 }}>
+          {temperature}°
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 1 }}>
+          Average 20.6°
+        </Typography>
+        <Box sx={{ display: "flex", gap: 1, mt: 3 }}>
+          <Button variant="outlined" color="inherit" size="small" sx={{ minWidth: 0, p: 1 }} onClick={handleDecrease}>
+            −
+          </Button>
+          <Button variant="contained" color="primary" size="small" sx={{ minWidth: 0, p: 1 }} onClick={handleIncrease}>
+            +
+          </Button>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+</file>
+
+<file path="app/components/MealPlanner.tsx">
+"use client";
+
+import { useEffect, useState } from "react";
+import { Box, Card, CardContent, TextField, Typography, Button, IconButton } from "@mui/material";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+
+interface MealPlanEntry {
+  date: string;
+  label: string;
+  meal: string;
+  editing: boolean;
+}
+
+const getDateLabel = (date: Date) =>
+  new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(date);
+
+const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+
+const getTwoWeekPlan = () => {
+  const result: MealPlanEntry[] = [];
+  const today = new Date();
+  for (let index = 0; index < 16; index += 1) {
+    const next = new Date(today);
+    next.setDate(today.getDate() + index);
+    result.push({
+      date: next.toISOString().slice(0, 10),
+      label: getDateLabel(next),
+      meal: "",
+      editing: false,
+    });
+  }
+  return result;
+};
+
+const mealIdeas = [
+  "Pasta Carbonara",
+  "Grilled Chicken",
+  "Fish Tacos",
+  "Beef Stir Fry",
+  "Vegetable Curry",
+  "Salmon with Lemon",
+  "Risotto",
+  "Pad Thai",
+  "Roast Vegetables",
+  "Homemade Pizza",
+  "Chicken Breast with Rice",
+  "Beef Meatballs",
+  "Shakshuka",
+  "Thai Green Curry",
+  "Baked Tilapia",
+];
+
+export default function MealPlanner() {
+  const [entries, setEntries] = useState<MealPlanEntry[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const today = getTodayDateString();
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("household-dashboard-mealplan");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as Array<Omit<MealPlanEntry, "editing">>;
+        if (Array.isArray(parsed) && parsed.length === 16) {
+          setEntries(parsed.map((entry) => ({ ...entry, editing: false })));
+          setMounted(true);
+          return;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    setEntries(getTwoWeekPlan());
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const toSave = entries.map(({ editing, ...rest }) => rest);
+    window.localStorage.setItem("household-dashboard-mealplan", JSON.stringify(toSave));
+  }, [entries, mounted]);
+
+  const handleChange = (date: string, value: string) => {
+    setEntries((current) =>
+      current.map((entry) => (entry.date === date ? { ...entry, meal: value } : entry))
+    );
+  };
+
+  const handleStartEdit = (date: string) => {
+    setEntries((current) =>
+      current.map((entry) => (entry.date === date ? { ...entry, editing: true } : entry))
+    );
+  };
+
+  const handleEndEdit = (date: string) => {
+    setEntries((current) =>
+      current.map((entry) => (entry.date === date ? { ...entry, editing: false } : entry))
+    );
+  };
+
+  const handleRandomize = (date: string) => {
+    const randomMeal = mealIdeas[Math.floor(Math.random() * mealIdeas.length)];
+    handleChange(date, randomMeal);
+    handleEndEdit(date);
+  };
+
+  return (
+    <Card sx={{ minHeight: 420 }} suppressHydrationWarning>
+      <CardContent>
+        <Typography variant="subtitle2" color="secondary">
+          Meal planner
+        </Typography>
+        <Typography variant="h6" sx={{ mt: 1, mb: 3, fontWeight: 700 }}>
+          Two week dinner calendar
+        </Typography>
+        {!mounted ? (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2 }}>
+            {Array.from({ length: 16 }).map((_, i) => (
+              <Box key={i} sx={{ p: 2, bgcolor: "rgba(148,163,184,0.05)", borderRadius: 2, border: "1px solid rgba(255,255,255,0.1)", height: 100 }} />
+            ))}
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2 }}>
+            {entries.map((entry) => {
+              const isToday = entry.date === today;
+              return (
+                <Box
+                  key={entry.date}
+                  sx={{
+                    p: 2,
+                    bgcolor: isToday ? "rgba(59, 130, 246, 0.08)" : "rgba(148,163,184,0.05)",
+                    borderRadius: 2,
+                    border: isToday ? "2px solid #f87171" : "1px solid rgba(255,255,255,0.1)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      bgcolor: isToday ? "rgba(59, 130, 246, 0.12)" : "rgba(148,163,184,0.08)",
+                    },
+                  }}
+                >
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
+                      {entry.label}
+                      {isToday ? <Typography component="span" sx={{ ml: 1, color: "#f87171", fontWeight: 700 }}>●</Typography> : null}
+                    </Typography>
+                  </Box>
+                  {entry.editing ? (
+                    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                      <TextField
+                        value={entry.meal}
+                        onChange={(event) => handleChange(entry.date, event.target.value)}
+                        placeholder="What to eat?"
+                        size="small"
+                        fullWidth
+                        autoFocus
+                        sx={{ flex: 1 }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRandomize(entry.date)}
+                        title="Random meal"
+                      >
+                        <RestartAltIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Box
+                      onClick={() => handleStartEdit(entry.date)}
+                      sx={{
+                        p: 1,
+                        bgcolor: "rgba(255,255,255,0.04)",
+                        borderRadius: 1,
+                        minHeight: 32,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        fontSize: 13,
+                        color: entry.meal ? "inherit" : "text.secondary",
+                        fontStyle: entry.meal ? "normal" : "italic",
+                        transition: "all 0.2s ease",
+                        "&:hover": {
+                          bgcolor: "rgba(255,255,255,0.08)",
+                        },
+                      }}
+                    >
+                      {entry.meal || "Click to add meal"}
+                    </Box>
+                  )}
+                  {entry.editing && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleEndEdit(entry.date)}
+                      sx={{ textTransform: "none", borderRadius: 1 }}
+                    >
+                      Done
+                    </Button>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+</file>
+
+<file path="app/components/WeatherSummary.tsx">
+"use client";
+
+import { useEffect, useState } from "react";
+import { Box, Button, Card, CardContent, CircularProgress, Typography, Divider } from "@mui/material";
+import WbSunnyIcon from "@mui/icons-material/WbSunny";
+import CloudIcon from "@mui/icons-material/Cloud";
+import AcUnitIcon from "@mui/icons-material/AcUnit";
+import FlashOnIcon from "@mui/icons-material/FlashOn";
+
+interface ForecastItem {
+  date: string;
+  high: number;
+  low: number;
+}
+
+interface WeatherPayload {
+  current: {
+    temperature: number;
+    windspeed: number;
+    weathercode: number;
+    description: string;
+  };
+  forecast: ForecastItem[];
+}
+
+const getWeatherIcon = (weathercode: number) => {
+  if (weathercode === 0) return <WbSunnyIcon sx={{ fontSize: 48, color: "#facc15" }} />;
+  if (weathercode === 1 || weathercode === 2) return <CloudIcon sx={{ fontSize: 48, color: "#94a3b8" }} />;
+  if (weathercode === 3) return <CloudIcon sx={{ fontSize: 48, color: "#64748b" }} />;
+  if (weathercode === 45 || weathercode === 48) return <CloudIcon sx={{ fontSize: 48, color: "#cbd5e1" }} />;
+  if (weathercode >= 51 && weathercode <= 67) return <CloudIcon sx={{ fontSize: 48, color: "#0ea5e9" }} />;
+  if (weathercode >= 71 && weathercode <= 86) return <AcUnitIcon sx={{ fontSize: 48, color: "#06b6d4" }} />;
+  if (weathercode >= 80 && weathercode <= 82) return <CloudIcon sx={{ fontSize: 48, color: "#3b82f6" }} />;
+  if (weathercode >= 85 && weathercode <= 86) return <AcUnitIcon sx={{ fontSize: 48, color: "#1e40af" }} />;
+  if (weathercode >= 95 && weathercode <= 99) return <FlashOnIcon sx={{ fontSize: 48, color: "#f59e0b" }} />;
+  return <CloudIcon sx={{ fontSize: 48, color: "#94a3b8" }} />;
+};
+
+export default function WeatherSummary() {
+  const [weather, setWeather] = useState<WeatherPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetch("/api/weather")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted) return;
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setWeather(data);
+        }
+      })
+      .catch(() => setError("Unable to load weather data."))
+      .finally(() => mounted && setLoading(false));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return (
+    <Card sx={{ minHeight: 205, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      <CardContent>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Box>
+            <Typography variant="subtitle2" color="secondary">
+              Weather
+            </Typography>
+            <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
+              Maribor
+            </Typography>
+          </Box>
+          {loading ? <CircularProgress size={32} color="inherit" /> : weather ? getWeatherIcon(weather.current.weathercode) : null}
+        </Box>
+
+        {error ? (
+          <Typography color="error" sx={{ mt: 3 }}>
+            {error}
+          </Typography>
+        ) : (
+          <>
+            <Typography variant="h2" sx={{ mt: 2, fontWeight: 700 }}>
+              {weather ? `${Math.round(weather.current.temperature)}°` : "—"}
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 1, fontSize: 14 }}>
+              {weather ? `${weather.current.description} • Wind ${Math.round(weather.current.windspeed)} km/h` : ""}
+            </Typography>
+          </>
+        )}
+      </CardContent>
+      <Box sx={{ px: 3, pb: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "space-between", mt: 1, gap: 1 }}>
+          {(weather?.forecast ?? []).slice(0, 4).map((item) => (
+            <Box key={item.date} sx={{ textAlign: "center", flex: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: 12 }}>
+                {new Date(item.date).toLocaleDateString("en-US", { weekday: "short" })}
+              </Typography>
+              <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
+                {Math.round(item.high)}° / {Math.round(item.low)}°
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+    </Card>
+  );
+}
+</file>
+
+<file path="app/providers.tsx">
+"use client";
+
+import type { ReactNode } from "react";
+import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { useMemo } from "react";
+
+export default function Providers({ children }: { children: ReactNode }) {
+  const theme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode: "dark",
+          background: {
+            default: "#07101e",
+            paper: "#0f172a",
+          },
+          primary: {
+            main: "#5b8cff",
+          },
+          secondary: {
+            main: "#22c55e",
+          },
+          text: {
+            primary: "#f8fafc",
+            secondary: "#94a3b8",
+          },
+        },
+        typography: {
+          fontFamily: "var(--font-geist-sans), Inter, Arial, sans-serif",
+        },
+        shape: {
+          borderRadius: 22,
+        },
+        components: {
+          MuiPaper: {
+            defaultProps: {
+              elevation: 0,
+            },
+          },
+        },
+      }),
+    []
+  );
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {children}
+    </ThemeProvider>
+  );
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import Providers from "./providers";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Household Command Center",
+  description: "A smart household dashboard built with Next.js and MUI.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/page.tsx">
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import CloudIcon from "@mui/icons-material/Cloud";
+import ThermostatIcon from "@mui/icons-material/Thermostat";
+import TvIcon from "@mui/icons-material/Tv";
+import GarageIcon from "@mui/icons-material/Garage";
+import LightbulbIcon from "@mui/icons-material/Lightbulb";
+import WifiIcon from "@mui/icons-material/Wifi";
+import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import WeatherSummary from "./components/WeatherSummary";
+import CalendarTimeline from "./components/CalendarTimeline";
+import MealPlanner from "./components/MealPlanner";
+import ClientDashboard, { ClimateControl } from "./components/ClientDashboard";
+import { Box, Button, Card, CardContent, Chip, Typography, Divider } from "@mui/material";
+
+const cameraZones = [
+  { label: "Front", active: false },
+  { label: "Street", active: false },
+  { label: "Nursery", active: true },
+  { label: "Driveway", active: false },
+  { label: "Backyard", active: false },
+];
+
+const rooms = [
+  { name: "Nursery", temp: "20.6", status: "OK", color: "success" },
+  { name: "Bedroom", temp: "20.1", status: "Idle", color: "warning" },
+  { name: "Kitchen", temp: "18.7", status: "Cool", color: "info" },
+  { name: "Living", temp: "18.5", status: "Idle", color: "warning" },
+  { name: "Study", temp: "19.3", status: "OK", color: "success" },
+];
+
+const shortcuts = [
+  { label: "Garage Door", icon: GarageIcon },
+  { label: "Back House", icon: SmartToyIcon },
+  { label: "TV", icon: TvIcon },
+  { label: "Split System", icon: ThermostatIcon },
+  { label: "Dining Room", icon: LightbulbIcon },
+  { label: "Living Room", icon: LightbulbIcon },
+];
+
+export default function Home() {
+  return (
+    <Box sx={{ minHeight: "100vh", px: { xs: 2, md: 4 }, py: { xs: 3, md: 4 }, background: "linear-gradient(180deg, #07101e 0%, #05101a 100%)" }}>
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", md: "center" }, gap: 2, mb: 3 }}>
+        <Box>
+          <Typography variant="overline" color="secondary" sx={{ letterSpacing: 2 }}>
+            HOUSEHOLD COMMAND CENTER
+          </Typography>
+          <Typography variant="h4" sx={{ mt: 1, fontWeight: 700 }}>
+            Smart home summary
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+          <Chip label="Server up" color="success" />
+        </Box>
+      </Box>
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "5fr 3fr 4fr" }, gap: 3, mb: 3 }}>
+        <ClientDashboard cameraZones={cameraZones} />
+
+        <Box sx={{ display: "grid", gap: 3 }}>
+          <WeatherSummary />
+
+          <ClimateControl />
+        </Box>
+
+        <CalendarTimeline />
+      </Box>
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr 1fr" }, gap: 3 }}>
+        <Card sx={{ minHeight: 340 }}>
+          <CardContent>
+            <Typography variant="subtitle2" color="secondary">
+              Rooms
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
+              Environment overview
+            </Typography>
+            <Box sx={{ display: "grid", gap: 1.5 }}>
+              {rooms.map((room) => (
+                <Box key={room.name} sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 1.5, bgcolor: "rgba(148,163,184,0.05)", borderRadius: 2 }}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>{room.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {room.status}
+                    </Typography>
+                  </Box>
+                  <Chip label={`${room.temp}°`} color={room.color as "success" | "warning" | "info"} size="small" />
+                </Box>
+              ))}
+            </Box>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ minHeight: 340 }}>
+          <CardContent>
+            <Typography variant="subtitle2" color="secondary">
+              Shortcuts
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
+              Quick actions
+            </Typography>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+              {shortcuts.map((shortcut) => {
+                const Icon = shortcut.icon;
+                return (
+                  <Button
+                    key={shortcut.label}
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<Icon />}
+                    sx={{ justifyContent: "flex-start", textTransform: "none", borderRadius: 3, height: 56 }}
+                  >
+                    {shortcut.label}
+                  </Button>
+                );
+              })}
+            </Box>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ minHeight: 340 }}>
+          <CardContent>
+            <Typography variant="subtitle2" color="secondary">
+              Network & energy
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
+              Home status details
+            </Typography>
+            <Box sx={{ display: "grid", gap: 2 }}>
+              {[
+                { title: "13 Lights On", subtitle: "Home lighting load", icon: LightbulbIcon, color: "warning" },
+                { title: "Climate Systems Off", subtitle: "19.46° average temp", icon: ThermostatIcon, color: "info" },
+                { title: "7HD Melbourne", subtitle: "Live channel", icon: WifiIcon, color: "secondary" },
+                { title: "Garage Door", subtitle: "Closed", icon: GarageIcon, color: "success" },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Box key={item.title} sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", bgcolor: "rgba(148,163,184,0.05)", p: 2, borderRadius: 3 }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {item.subtitle}
+                      </Typography>
+                    </Box>
+                    <Icon color={item.color as "inherit" | "primary" | "secondary" | "error" | "info" | "success" | "warning"} />
+                  </Box>
+                );
+              })}
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
+
+      <Box sx={{ mt: 3 }}>
+        <MealPlanner />
+      </Box>
+    </Box>
+  );
+}
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="AGENTS.md">
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
+</file>
+
+<file path="CLAUDE.md">
+@AGENTS.md
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "household-command-center",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
+    "date-fns": "^4.4.0",
+    "next": "16.2.7",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.7",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="README.md">
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Calendar and Weather Sync
+
+This dashboard now includes:
+
+- Weather data from the [Open-Meteo](https://open-meteo.com) API (default set to Maribor, Slovenia)
+- Calendar event sync from public ICS calendar URLs
+- Task creation and local task storage in the dashboard
+
+To enable the integrations, create a `.env.local` file in the project root and add one or both of the following values:
+
+```env
+WEATHER_LAT=37.8136
+WEATHER_LON=144.9631
+GOOGLE_CALENDAR_ICS_URL=https://calendar.google.com/calendar/ical/your_calendar_id/public/basic.ics
+OUTLOOK_CALENDAR_ICS_URL=https://outlook.office.com/owa/calendar/your_calendar_id/calendar.ics
+```
+
+If calendar URLs are not configured, the dashboard will show built-in sample events.
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+</files>
