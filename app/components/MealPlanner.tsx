@@ -79,8 +79,9 @@ export default function MealPlanner() {
           setError(data.error);
           setEntries(expectedWindow);
         } else {
-          const mealsByDate = new Map(
-            (data.items ?? []).map((entry: any) => [entry.date, entry])
+          type MealPlanItem = { id?: string; date: string; meal: string };
+          const mealsByDate = new Map<string, MealPlanItem>(
+            (data.items ?? []).map((entry: MealPlanItem) => [entry.date, entry])
           );
 
           setEntries(
