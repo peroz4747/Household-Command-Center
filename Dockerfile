@@ -1,20 +1,19 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# ensure devDependencies are installed for the build (tailwind/postcss)
-ENV NODE_ENV=development
+# keep NODE_ENV=production, but explicitly install devDependencies for the build
+ENV NODE_ENV=production
 
 COPY package.json package-lock.json* ./
-# install all deps (including devDeps) so the Next build that uses Tailwind/PostCSS succeeds
-RUN npm ci
+# install production+dev dependencies so build plugins like Tailwind/PostCSS are available
+RUN npm ci --include=dev
 
 COPY . .
 
 # build the app
 RUN npm run build
 
-# switch to production mode and remove devDependencies to keep runtime lean
-ENV NODE_ENV=production
+# prune devDependencies to keep runtime lean
 RUN npm prune --production || true
 
 EXPOSE 3000
