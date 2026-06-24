@@ -1,15 +1,18 @@
 version: '3.9'
 services:
   app:
-    build: .
-    image: household-command-center:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: household-command-center:dev
     ports:
       - '3000:3000'
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
     volumes:
       - ./:/app:cached
       - /app/node_modules
+      - ./data:/app/data
     command: npm run dev
 
   # For production, run the built image with `docker-compose -f docker-compose.yml run --service-ports app`
