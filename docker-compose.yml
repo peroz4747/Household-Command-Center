@@ -13,6 +13,7 @@ services:
       - ./:/app:cached
       - /app/node_modules
       - ./data:/app/data
-    command: npm run dev
+    # Ensure Next dev binds to 0.0.0.0 so the app and source maps are reachable from LAN
+    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]
 
   # For production, run the built image with `docker-compose -f docker-compose.yml run --service-ports app`
