@@ -75,7 +75,7 @@ export function ClimateControl() {
           </Box>
           <ThermostatIcon sx={{ color: "#facc15", fontSize: 38 }} />
         </Box>
-        <Typography variant="h1" sx={{ mt: 4, fontWeight: 700 }}>
+        <Typography variant="h2" sx={{ mt: 4, fontWeight: 700 }}>
           {temperature}°
         </Typography>
         <Typography color="text.secondary" sx={{ mt: 1 }}>

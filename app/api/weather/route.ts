@@ -39,12 +39,13 @@ function formatForecast(daily: any) {
     date,
     high: daily.temperature_2m_max[index],
     low: daily.temperature_2m_min[index],
+    weathercode: daily.weathercode[index],
   }));
 }
 
 export async function GET() {
   try {
-    const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto`;
+    const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`;
     const response = await fetch(endpoint, { next: { revalidate: 600 } });
 
     if (!response.ok) {

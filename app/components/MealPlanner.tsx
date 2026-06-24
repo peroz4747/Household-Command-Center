@@ -11,24 +11,36 @@ interface MealPlanEntry {
   editing: boolean;
 }
 
+const TODAY_INDEX = 7;
+
+const getBaseDate = () => new Date();
+
+const toDateString = (date: Date) => date.toISOString().slice(0, 10);
+
 const getDateLabel = (date: Date) =>
-  new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(date);
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 
-const getTodayDateString = () => new Date().toISOString().slice(0, 10);
+const getTodayDateString = () => toDateString(getBaseDate());
 
-const getTwoWeekPlan = () => {
+const getMealPlanWindow = (baseDate = getBaseDate()) => {
   const result: MealPlanEntry[] = [];
-  const today = new Date();
+
   for (let index = 0; index < 16; index += 1) {
-    const next = new Date(today);
-    next.setDate(today.getDate() + index);
+    const next = new Date(baseDate);
+    next.setDate(baseDate.getDate() + index - TODAY_INDEX);
+
     result.push({
-      date: next.toISOString().slice(0, 10),
+      date: toDateString(next),
       label: getDateLabel(next),
       meal: "",
       editing: false,
     });
   }
+
   return result;
 };
 
@@ -56,12 +68,24 @@ export default function MealPlanner() {
   const today = getTodayDateString();
 
   useEffect(() => {
+    const expectedWindow = getMealPlanWindow();
     const stored = window.localStorage.getItem("household-dashboard-mealplan");
+
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Array<Omit<MealPlanEntry, "editing">>;
+
         if (Array.isArray(parsed) && parsed.length === 16) {
-          setEntries(parsed.map((entry) => ({ ...entry, editing: false })));
+          const mealsByDate = new Map(parsed.map((entry) => [entry.date, entry.meal]));
+
+          setEntries(
+            expectedWindow.map((entry) => ({
+              ...entry,
+              meal: mealsByDate.get(entry.date) ?? "",
+              editing: false,
+            }))
+          );
+
           setMounted(true);
           return;
         }
@@ -69,12 +93,14 @@ export default function MealPlanner() {
         // ignore parse errors
       }
     }
-    setEntries(getTwoWeekPlan());
+
+    setEntries(expectedWindow);
     setMounted(true);
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
+
     const toSave = entries.map(({ editing, ...rest }) => rest);
     window.localStorage.setItem("household-dashboard-mealplan", JSON.stringify(toSave));
   }, [entries, mounted]);
@@ -109,19 +135,31 @@ export default function MealPlanner() {
         <Typography variant="subtitle2" color="secondary">
           Meal planner
         </Typography>
+
         <Typography variant="h6" sx={{ mt: 1, mb: 3, fontWeight: 700 }}>
           Two week dinner calendar
         </Typography>
+
         {!mounted ? (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(4, 1fr)" }, gap: 2 }}>
             {Array.from({ length: 16 }).map((_, i) => (
-              <Box key={i} sx={{ p: 2, bgcolor: "rgba(148,163,184,0.05)", borderRadius: 2, border: "1px solid rgba(255,255,255,0.1)", height: 100 }} />
+              <Box
+                key={i}
+                sx={{
+                  p: 2,
+                  bgcolor: "rgba(148,163,184,0.05)",
+                  borderRadius: 2,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  height: 100,
+                }}
+              />
             ))}
           </Box>
         ) : (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 2 }}>
-            {entries.map((entry) => {
-              const isToday = entry.date === today;
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(4, 1fr)" }, gap: 2 }}>
+            {entries.map((entry, index) => {
+              const isToday = index === TODAY_INDEX;
+
               return (
                 <Box
                   key={entry.date}
@@ -142,9 +180,14 @@ export default function MealPlanner() {
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
                       {entry.label}
-                      {isToday ? <Typography component="span" sx={{ ml: 1, color: "#f87171", fontWeight: 700 }}>●</Typography> : null}
+                      {isToday ? (
+                        <Typography component="span" sx={{ ml: 1, color: "#f87171", fontWeight: 700 }}>
+                          ●
+                        </Typography>
+                      ) : null}
                     </Typography>
                   </Box>
+
                   {entry.editing ? (
                     <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                       <TextField
@@ -156,11 +199,8 @@ export default function MealPlanner() {
                         autoFocus
                         sx={{ flex: 1 }}
                       />
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRandomize(entry.date)}
-                        title="Random meal"
-                      >
+
+                      <IconButton size="small" onClick={() => handleRandomize(entry.date)} title="Random meal">
                         <RestartAltIcon fontSize="small" />
                       </IconButton>
                     </Box>
@@ -187,6 +227,7 @@ export default function MealPlanner() {
                       {entry.meal || "Click to add meal"}
                     </Box>
                   )}
+
                   {entry.editing && (
                     <Button
                       size="small"

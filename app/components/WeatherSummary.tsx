@@ -11,6 +11,7 @@ interface ForecastItem {
   date: string;
   high: number;
   low: number;
+  weathercode: number;
 }
 
 interface WeatherPayload {
@@ -99,7 +100,10 @@ export default function WeatherSummary() {
               <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: 12 }}>
                 {new Date(item.date).toLocaleDateString("en-US", { weekday: "short" })}
               </Typography>
-              <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
+                {getWeatherIcon(item.weathercode)}
+              </Box>
+              <Typography sx={{ fontWeight: 700, fontSize: 13, mt: 1 }}>
                 {Math.round(item.high)}° / {Math.round(item.low)}°
               </Typography>
             </Box>
