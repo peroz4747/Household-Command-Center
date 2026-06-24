@@ -5,6 +5,7 @@ import { Box, Card, CardContent, TextField, Typography, Button, IconButton } fro
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 
 interface MealPlanEntry {
+  id?: string;
   date: string;
   label: string;
   meal: string;
@@ -65,45 +66,59 @@ const mealIdeas = [
 export default function MealPlanner() {
   const [entries, setEntries] = useState<MealPlanEntry[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const today = getTodayDateString();
 
   useEffect(() => {
     const expectedWindow = getMealPlanWindow();
-    const stored = window.localStorage.getItem("household-dashboard-mealplan");
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Array<Omit<MealPlanEntry, "editing">>;
-
-        if (Array.isArray(parsed) && parsed.length === 16) {
-          const mealsByDate = new Map(parsed.map((entry) => [entry.date, entry.meal]));
-
-          setEntries(
-            expectedWindow.map((entry) => ({
-              ...entry,
-              meal: mealsByDate.get(entry.date) ?? "",
-              editing: false,
-            }))
+    fetch("/api/meals")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.error) {
+          setError(data.error);
+          setEntries(expectedWindow);
+        } else {
+          const mealsByDate = new Map(
+            (data.items ?? []).map((entry: any) => [entry.date, entry])
           );
 
-          setMounted(true);
-          return;
+          setEntries(
+            expectedWindow.map((entry) => {
+              const saved = mealsByDate.get(entry.date);
+              return {
+                ...entry,
+                id: saved?.id,
+                meal: saved?.meal ?? "",
+                editing: false,
+              };
+            })
+          );
         }
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    setEntries(expectedWindow);
-    setMounted(true);
+      })
+      .catch(() => {
+        setError("Unable to load meal planner data.");
+        setEntries(expectedWindow);
+      })
+      .finally(() => setMounted(true));
   }, []);
 
-  useEffect(() => {
-    if (!mounted) return;
-
-    const toSave = entries.map(({ editing, ...rest }) => rest);
-    window.localStorage.setItem("household-dashboard-mealplan", JSON.stringify(toSave));
-  }, [entries, mounted]);
+  const saveMeal = async (date: string, meal: string, id?: string) => {
+    const payload = { date, meal };
+    try {
+      const response = await fetch("/api/meals", {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id, ...payload } : payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to save meal");
+      return result;
+    } catch (err) {
+      setError((err as Error).message);
+      return null;
+    }
+  };
 
   const handleChange = (date: string, value: string) => {
     setEntries((current) =>
@@ -117,15 +132,53 @@ export default function MealPlanner() {
     );
   };
 
-  const handleEndEdit = (date: string) => {
+  const handleEndEdit = async (date: string) => {
+    const edited = entries.find((entry) => entry.date === date);
+    if (edited) {
+      const result = await saveEntry(date, edited.meal, edited.id);
+      if (result) {
+        setEntries((current) =>
+          current.map((entry) =>
+            entry.date === date ? { ...entry, id: result.id, editing: false } : entry
+          )
+        );
+        return;
+      }
+    }
+
     setEntries((current) =>
       current.map((entry) => (entry.date === date ? { ...entry, editing: false } : entry))
     );
   };
 
-  const handleRandomize = (date: string) => {
+  const saveEntry = async (date: string, meal: string, id?: string) => {
+    const payload = { date, meal };
+    try {
+      const response = await fetch("/api/meals", {
+        method: id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id, ...payload } : payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to save meal");
+      return result;
+    } catch (err) {
+      setError((err as Error).message);
+      return null;
+    }
+  };
+
+  const handleRandomize = async (date: string) => {
     const randomMeal = mealIdeas[Math.floor(Math.random() * mealIdeas.length)];
-    handleChange(date, randomMeal);
+    const matched = entries.find((entry) => entry.date === date);
+    const result = await saveEntry(date, randomMeal, matched?.id);
+    if (result) {
+      setEntries((current) =>
+        current.map((entry) =>
+          entry.date === date ? { ...entry, meal: randomMeal, id: result.id } : entry
+        )
+      );
+    }
     handleEndEdit(date);
   };
 

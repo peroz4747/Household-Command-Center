@@ -9,6 +9,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 interface CalendarEvent {
+  id?: string;
   title: string;
   start: string;
   end: string;
@@ -54,17 +55,32 @@ export default function CalendarTimeline() {
   useEffect(() => {
     let mounted = true;
 
-    fetch("/api/calendar")
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([
+      fetch("/api/calendar").then((res) => res.json()),
+      fetch("/api/events").then((res) => res.json()),
+      fetch("/api/tasks").then((res) => res.json()),
+    ])
+      .then(([calendarData, eventsData, tasksData]) => {
         if (!mounted) return;
-        if (data.error) {
-          setError(data.error);
+        if (calendarData.error) {
+          setError(calendarData.error);
         } else {
-          setEvents(data.events ?? []);
+          setEvents(calendarData.events ?? []);
+        }
+
+        if (eventsData.error) {
+          setError(eventsData.error);
+        } else {
+          setLocalEvents(eventsData.items ?? []);
+        }
+
+        if (tasksData.error) {
+          setError(tasksData.error);
+        } else {
+          setTasks(tasksData.items ?? []);
         }
       })
-      .catch(() => setError("Unable to load calendar events."))
+      .catch(() => setError("Unable to load calendar and task data."))
       .finally(() => mounted && setLoading(false));
 
     return () => {
@@ -72,48 +88,8 @@ export default function CalendarTimeline() {
     };
   }, []);
 
-  // local calendar events stored client-side
   const [localEvents, setLocalEvents] = useState<CalendarEvent[]>([]);
   const [hiddenEventKeys, setHiddenEventKeys] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = window.localStorage.getItem('household-calendar-events');
-      if (stored) setLocalEvents(JSON.parse(stored));
-    } catch {}
-    try {
-      const hidden = window.localStorage.getItem('household-calendar-hidden');
-      if (hidden) setHiddenEventKeys(JSON.parse(hidden));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('household-calendar-events', JSON.stringify(localEvents));
-  }, [localEvents]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('household-calendar-hidden', JSON.stringify(hiddenEventKeys));
-  }, [hiddenEventKeys]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("household-dashboard-tasks");
-    if (stored) {
-      try {
-        setTasks(JSON.parse(stored));
-      } catch {
-        setTasks([]);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("household-dashboard-tasks", JSON.stringify(tasks));
-  }, [tasks]);
 
   const pendingTasks = useMemo(
     () => tasks.filter((task) => task.status === "pending" && !isOverdueTask(task)),
@@ -125,28 +101,61 @@ export default function CalendarTimeline() {
   );
   const completedTasks = useMemo(() => tasks.filter((task) => task.status === "completed"), [tasks]);
 
-  const handleAddTask = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    const nextTask: TaskItem = {
-      id: `${Date.now()}-${newTaskTitle}`,
+    const nextTask = {
       title: newTaskTitle.trim(),
       due: newTaskDue || "No due date",
       status: "pending",
     };
 
-    setTasks((current) => [nextTask, ...current]);
-    setNewTaskTitle("");
-    setNewTaskDue("");
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextTask),
+      });
+      const created = await response.json();
+      if (!response.ok) throw new Error(created.error || "Unable to save task");
+      setTasks((current) => [created, ...current]);
+      setNewTaskTitle("");
+      setNewTaskDue("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
-    setTasks((current) => current.filter((task) => task.id !== id));
+  const handleDeleteTask = async (id: string) => {
+    try {
+      await fetch("/api/tasks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setTasks((current) => current.filter((task) => task.id !== id));
+    } catch {
+      setError("Unable to delete task.");
+    }
   };
 
-  const handleCompleteTask = (id: string) => {
-    setTasks((current) => current.map((task) => (task.id === id ? { ...task, status: "completed" } : task)));
+  const handleCompleteTask = async (id: string) => {
+    const currentTask = tasks.find((task) => task.id === id);
+    if (!currentTask) return;
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...currentTask, status: "completed" }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || "Unable to update task");
+      setTasks((current) => current.map((task) => (task.id === id ? updated : task)));
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
   const combinedEvents = useMemo(() => {
@@ -204,24 +213,46 @@ export default function CalendarTimeline() {
     setAddOpen(true);
   };
 
-  const handleSaveEvent = () => {
+  const handleSaveEvent = async () => {
     if (!evTitle.trim() || !evDate) return;
     const start = `${evDate}${evStart ? 'T' + evStart : ''}`;
     const end = evEnd ? `${evDate}T${evEnd}` : '';
-    const next: CalendarEvent = { title: evTitle.trim(), start, end, description: evDesc };
-    setLocalEvents((cur) => [next, ...cur]);
-    setAddOpen(false);
-    setEvTitle('');
-    setEvDesc('');
+    const next = { title: evTitle.trim(), start, end, description: evDesc };
+
+    try {
+      const response = await fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const created = await response.json();
+      if (!response.ok) throw new Error(created.error || "Unable to save event");
+      setLocalEvents((cur) => [created, ...cur]);
+      setAddOpen(false);
+      setEvTitle('');
+      setEvDesc('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
-  const handleDeleteEvent = (ev: CalendarEvent) => {
-    const key = `${ev.title}--${ev.start}`;
-    const found = localEvents.find((l) => `${l.title}--${l.start}` === key);
-    if (found) {
-      setLocalEvents((cur) => cur.filter((l) => `${l.title}--${l.start}` !== key));
-      return;
+  const handleDeleteEvent = async (ev: CalendarEvent) => {
+    if (ev.id) {
+      try {
+        await fetch("/api/events", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: ev.id }),
+        });
+        setLocalEvents((cur) => cur.filter((item) => item.id !== ev.id));
+        return;
+      } catch {
+        setError("Unable to delete event.");
+        return;
+      }
     }
+
+    const key = `${ev.title}--${ev.start}`;
     setHiddenEventKeys((cur) => Array.from(new Set([...cur, key])));
   };
 
