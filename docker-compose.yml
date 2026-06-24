@@ -3,17 +3,14 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    image: household-command-center:dev
+      dockerfile: Dockerfile
+    image: household-command-center:latest
     ports:
       - '3003:3000'
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
     volumes:
-      - ./:/app:cached
-      - /app/node_modules
       - ./data:/app/data
-    # Ensure Next dev binds to 0.0.0.0 so the app and source maps are reachable from LAN
-    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]
+    command: ["npm", "start"]
 
   # For production, run the built image with `docker-compose -f docker-compose.yml run --service-ports app`
