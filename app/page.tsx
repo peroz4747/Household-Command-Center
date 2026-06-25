@@ -11,7 +11,8 @@ import WeatherSummary from "./components/WeatherSummary";
 import CalendarTimeline from "./components/CalendarTimeline";
 import MealPlanner from "./components/MealPlanner";
 import ClientDashboard, { ClimateControl } from "./components/ClientDashboard";
-import { Box, Chip, Typography } from "@mui/material";
+import ServerStatus from "./components/ServerStatus";
+import { Box, Typography } from "@mui/material";
 import EnvironmentOverview from "./components/EnvironmentOverview";
 import Shortcuts from "./components/Shortcuts";
 import NetworkAndEnergy from "./components/NetworkAndEnergy";
@@ -82,9 +83,7 @@ export default function Home() {
         </Box>
         <Box>
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: { xs: "center", md: "flex-end" } }}>
-            {serverStatus === 0 && <Chip label="Server down" color="error" />}
-            {serverStatus === 1 && <Chip label="Server up" color="success" />}
-            {serverStatus === 2 && <Chip label="Server issues" color="warning" />}
+            <ServerStatus status={serverStatus} />
           </Box>
         </Box>
 
