@@ -17,6 +17,7 @@ import EnvironmentOverview from "./components/EnvironmentOverview";
 import Shortcuts from "./components/Shortcuts";
 import NetworkAndEnergy from "./components/NetworkAndEnergy";
 import NewsFeed from "./components/NewsFeed";
+import NetworkOverview from "./components/NetworkOverview";
 
 const cameraZones = [
   { label: "Hallway", active: false },
@@ -84,6 +85,7 @@ export default function Home() {
         <Box>
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: { xs: "center", md: "flex-end" } }}>
             <ServerStatus status={serverStatus} />
+            <NetworkOverview />
           </Box>
         </Box>
 
