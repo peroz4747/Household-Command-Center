@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { calendarId, calendarTimeZone, googleCalendar } from "../../../lib/googleCalendar";
+import { calendarId, calendarTimeZone, getGoogleCalendar } from "../../../lib/googleCalendar";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ function toAppEvent(event: any) {
 
 export async function GET() {
   try {
-    const response = await googleCalendar.events.list({
+    const response = await getGoogleCalendar().events.list({
       calendarId,
       timeMin: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
       maxResults: 250,
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const response = await googleCalendar.events.insert({
+    const response = await getGoogleCalendar().events.insert({
       calendarId,
       requestBody: {
         summary: body.title,
@@ -78,7 +78,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
-    await googleCalendar.events.delete({
+    await getGoogleCalendar().events.delete({
       calendarId,
       eventId: body.id,
     });
