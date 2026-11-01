@@ -1,4 +1,4 @@
-import { guestWebLinks } from "./webLinks";
+import { webLinks } from "./webLinks";
 import { pveConfigured, pveGet } from "./proxmox";
 
 export type GuestKind = "node" | "lxc" | "qemu" | "docker";
@@ -102,12 +102,8 @@ async function proxmoxItems(): Promise<NetworkItem[]> {
     relevant.map(async (r): Promise<NetworkItem> => {
       const isNode = r.type === "node";
       const ips = isNode ? await nodeIps(r.node) : await guestIps(r);
-      const guestLink = r.name ? guestWebLinks[r.name] : undefined;
-      const webUrl = !ips.length
-        ? undefined
-        : isNode
-          ? `https://${ips[0]}:8006/`
-          : guestLink?.replaceAll("{ip}", ips[0]);
+      const override = webLinks[isNode ? r.node : (r.name ?? "")];
+      const webUrl = override ?? (isNode && ips.length ? `https://${ips[0]}:8006/` : undefined);
       return {
         id: r.id,
         name: isNode ? r.node : `${r.vmid} · ${r.name ?? "brez imena"}`,
@@ -157,14 +153,15 @@ async function dockerItems(): Promise<NetworkItem[]> {
     const internalIps = Object.values(c.NetworkSettings?.Networks ?? {})
       .map((n) => n.IPAddress)
       .filter((ip): ip is string => Boolean(ip));
+    const name = c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12);
     return {
       id: `docker/${c.Id.slice(0, 12)}`,
-      name: c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12),
+      name,
       kind: "docker",
       status: c.State,
       ips: published.length && DOCKER_HOST_IP ? [DOCKER_HOST_IP] : internalIps,
       ports,
-      webUrl: webPort && DOCKER_HOST_IP ? `http://${DOCKER_HOST_IP}:${webPort}/` : undefined,
+      webUrl: webLinks[name] ?? (webPort && DOCKER_HOST_IP ? `http://${DOCKER_HOST_IP}:${webPort}/` : undefined),
       host: c.Image,
     };
   });
