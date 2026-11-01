@@ -1,4 +1,5 @@
 import https from "node:https";
+import { guestWebLinks } from "./webLinks";
 
 export type GuestKind = "node" | "lxc" | "qemu" | "docker";
 
@@ -9,6 +10,7 @@ export type NetworkItem = {
   status: string;
   ips: string[];
   ports: string[];
+  webUrl?: string;
   host?: string;
   uptime?: number;
   cpu?: number;
@@ -142,13 +144,21 @@ async function proxmoxItems(): Promise<NetworkItem[]> {
   return Promise.all(
     relevant.map(async (r): Promise<NetworkItem> => {
       const isNode = r.type === "node";
+      const ips = isNode ? await nodeIps(r.node) : await guestIps(r);
+      const guestLink = r.name ? guestWebLinks[r.name] : undefined;
+      const webUrl = !ips.length
+        ? undefined
+        : isNode
+          ? `https://${ips[0]}:8006/`
+          : guestLink?.replaceAll("{ip}", ips[0]);
       return {
         id: r.id,
         name: isNode ? r.node : `${r.vmid} · ${r.name ?? "brez imena"}`,
         kind: r.type as GuestKind,
         status: r.status,
-        ips: isNode ? await nodeIps(r.node) : await guestIps(r),
+        ips,
         ports: [],
+        webUrl,
         host: isNode ? undefined : r.node,
         uptime: r.uptime,
         cpu: r.cpu,
@@ -186,6 +196,7 @@ async function dockerItems(): Promise<NetworkItem[]> {
   return containers.map((c) => {
     const published = c.Ports.filter((p) => p.PublicPort && (!p.IP || p.IP === "0.0.0.0"));
     const ports = [...new Set(published.map((p) => `${p.PublicPort}→${p.PrivatePort}/${p.Type}`))];
+    const webPort = published.find((p) => p.Type === "tcp")?.PublicPort;
     const internalIps = Object.values(c.NetworkSettings?.Networks ?? {})
       .map((n) => n.IPAddress)
       .filter((ip): ip is string => Boolean(ip));
@@ -196,6 +207,7 @@ async function dockerItems(): Promise<NetworkItem[]> {
       status: c.State,
       ips: published.length && DOCKER_HOST_IP ? [DOCKER_HOST_IP] : internalIps,
       ports,
+      webUrl: webPort && DOCKER_HOST_IP ? `http://${DOCKER_HOST_IP}:${webPort}/` : undefined,
       host: c.Image,
     };
   });

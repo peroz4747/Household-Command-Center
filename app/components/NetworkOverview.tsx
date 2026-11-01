@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import HubIcon from "@mui/icons-material/Hub";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import {
   Alert,
   Box,
@@ -14,7 +15,6 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  Link,
   Stack,
   Table,
   TableBody,
@@ -66,25 +66,19 @@ function formatMem(used?: number, max?: number) {
 
 function AddressCell({ item }: { item: NetworkItem }) {
   if (!item.ips.length) return <Typography variant="body2" color="text.secondary">–</Typography>;
-  const ip = item.ips[0];
-  const webPort = item.ports.map((p) => p.split("→")[0]).find(Boolean);
-  const href = item.kind === "node" ? `https://${ip}:8006` : webPort ? `http://${ip}:${webPort}` : undefined;
-
   return (
     <Stack spacing={0.25}>
       {item.ips.map((addr) => (
         <Typography key={addr} variant="body2" sx={{ fontFamily: "var(--font-geist-mono), monospace" }}>
-          {href && addr === ip ? (
-            <Link href={href} target="_blank" rel="noreferrer" underline="hover">
-              {addr}
-            </Link>
-          ) : (
-            addr
-          )}
+          {addr}
         </Typography>
       ))}
     </Stack>
   );
+}
+
+function shortName(item: NetworkItem) {
+  return item.name.replace(/^\d+ · /, "").replace(/^household-command-center-/, "");
 }
 
 export default function NetworkOverview() {
@@ -121,6 +115,7 @@ export default function NetworkOverview() {
 
   const running = data?.items.filter((i) => statusColor(i.status) === "success").length ?? 0;
   const visible = data?.items.filter((i) => filter === "all" || i.kind === filter) ?? [];
+  const webItems = data?.items.filter((i) => i.webUrl) ?? [];
 
   return (
     <>
@@ -182,6 +177,31 @@ export default function NetworkOverview() {
             </Stack>
           )}
 
+          {webItems.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="overline" color="text.secondary">
+                Web interfaces
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+                {webItems.map((item) => (
+                  <Button
+                    key={item.id}
+                    component="a"
+                    href={item.webUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    variant="outlined"
+                    size="small"
+                    color={statusColor(item.status) === "success" ? "primary" : "inherit"}
+                    endIcon={<OpenInNewIcon fontSize="small" />}
+                  >
+                    {shortName(item)}
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
+          )}
+
           {loading && !data ? (
             <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
               <CircularProgress />
@@ -200,6 +220,7 @@ export default function NetworkOverview() {
                       <TableCell>Uptime</TableCell>
                       <TableCell>CPU</TableCell>
                       <TableCell>Memory</TableCell>
+                      <TableCell align="center">Web UI</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -226,11 +247,29 @@ export default function NetworkOverview() {
                         <TableCell>{formatUptime(item.uptime)}</TableCell>
                         <TableCell>{item.cpu !== undefined ? `${(item.cpu * 100).toFixed(0)} %` : "–"}</TableCell>
                         <TableCell>{formatMem(item.memUsed, item.memMax)}</TableCell>
+                        <TableCell align="center">
+                          {item.webUrl ? (
+                            <Tooltip title={item.webUrl}>
+                              <IconButton
+                                size="small"
+                                component="a"
+                                href={item.webUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`Open ${shortName(item)} web interface`}
+                              >
+                                <OpenInNewIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">–</Typography>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {!visible.length && (
                       <TableRow>
-                        <TableCell colSpan={8} align="center" sx={{ py: 4, color: "text.secondary" }}>
+                        <TableCell colSpan={9} align="center" sx={{ py: 4, color: "text.secondary" }}>
                           No services found.
                         </TableCell>
                       </TableRow>

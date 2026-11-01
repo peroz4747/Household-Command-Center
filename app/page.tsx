@@ -18,6 +18,7 @@ import Shortcuts from "./components/Shortcuts";
 import NetworkAndEnergy from "./components/NetworkAndEnergy";
 import NewsFeed from "./components/NewsFeed";
 import NetworkOverview from "./components/NetworkOverview";
+import HeaderClock from "./components/HeaderClock";
 
 const cameraZones = [
   { label: "Hallway", active: false },
@@ -88,12 +89,7 @@ export default function Home() {
         </Box>
 
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: { xs: "center", md: "flex-end" } }}>
-          <Typography variant="h6" color="text.secondary">
-            {new Date().toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" })}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {new Date().toLocaleDateString("en-EN", { weekday: "long", month: "long", day: "numeric" })}
-          </Typography>
+          <HeaderClock />
         </Box>
       </Box>
 
