@@ -50,8 +50,6 @@ const networkAndEnergyItems = [
   { title: "Wi-Fi", subtitle: "Wi-Fi is online", icon: WifiIcon, color: "success" },
 ];
 
-const serverStatus: 0 | 1 | 2 = 1; // 0 = down, 1 = up, 2 = issues
-
 export default function Home() {
   return (
     <Box
@@ -84,7 +82,7 @@ export default function Home() {
         </Box>
         <Box>
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: { xs: "center", md: "flex-end" } }}>
-            <ServerStatus status={serverStatus} />
+            <ServerStatus />
             <NetworkOverview />
           </Box>
         </Box>

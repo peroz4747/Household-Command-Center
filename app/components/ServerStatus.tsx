@@ -1,97 +1,54 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  Stack,
-} from "@mui/material";
+import { useCallback, useEffect, useState } from "react";
+import { Chip } from "@mui/material";
+import type { NetworkOverview } from "../../lib/network";
 
-type ServerStatusProps = {
-  status: 0 | 1 | 2;
-  dashboardUrl?: string;
-};
+const REFRESH_MS = 60_000;
 
-const statusMap = {
-  0: { label: "Server down", color: "error" as const },
-  1: { label: "Server up", color: "success" as const },
-  2: { label: "Server issues", color: "warning" as const },
-};
+const isUp = (status: string) => status === "running" || status === "online";
 
-export default function ServerStatus({
-  status,
-  dashboardUrl = "https://grafana.home/public-dashboards/f59310fe04234c6182ff0ac56a214e1c?orgId=1&kiosk",
-}: ServerStatusProps) {
-  const [open, setOpen] = useState(false);
-  const statusInfo = statusMap[status];
+type State =
+  | { kind: "loading" }
+  | { kind: "error" }
+  | { kind: "ok"; up: number; total: number; hasErrors: boolean };
 
-  const iframeUrl = useMemo(() => {
-    const url = new URL(dashboardUrl);
-    url.searchParams.set("kiosk", "");
-    return url.toString();
-  }, [dashboardUrl]);
+export default function ServerStatus() {
+  const [state, setState] = useState<State>({ kind: "loading" });
 
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/network", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as NetworkOverview;
+      setState({
+        kind: "ok",
+        up: data.items.filter((i) => isUp(i.status)).length,
+        total: data.items.length,
+        hasErrors: data.errors.length > 0,
+      });
+    } catch {
+      setState({ kind: "error" });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const id = setInterval(() => void load(), REFRESH_MS);
+    return () => clearInterval(id);
+  }, [load]);
+
+  if (state.kind === "loading") return <Chip label="Server …" />;
+  if (state.kind === "error" || state.up === 0) {
+    return <Chip label={state.kind === "ok" ? `Server down (0)` : "Server down"} color="error" />;
+  }
+
+  const allUp = state.up === state.total && !state.hasErrors;
   return (
-    <>
-        <Box
-        sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 1,
-        }}
-        >
-            <Chip label={statusInfo.label} color={statusInfo.color} />
-            <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setOpen(true)}
-            >
-                Server status
-            </Button>
-        </Box>
-
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xl" fullWidth>
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          Server status dashboard
-
-          <IconButton size="small" onClick={() => setOpen(false)} aria-label="Close">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent dividers sx={{ p: 0, height: "75vh", overflow: "hidden" }}>
-          <Box
-            component="iframe"
-            src={iframeUrl}
-            title="Grafana Server Status Dashboard"
-            allowFullScreen
-            sx={{
-              display: "block",
-              width: "100%",
-              height: "100%",
-              border: 0,
-            }}
-          />
-        </DialogContent>
-
-        <DialogActions sx={{ px: 2, py: 1 }}>
-          <Button component="a" href={dashboardUrl} target="_blank" rel="noreferrer" size="small">
-            Open in Grafana
-          </Button>
-
-          <Button onClick={() => setOpen(false)} size="small">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+    <Chip
+      label={`${allUp ? "Server up" : "Server issues"} (${state.up})`}
+      color={allUp ? "success" : "warning"}
+      title={`${state.up} of ${state.total} services online/running`}
+    />
   );
 }
