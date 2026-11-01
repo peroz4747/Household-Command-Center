@@ -15,6 +15,9 @@ services:
       - DOCKER_API_URL=http://docker-proxy:2375
     volumes:
       - ./data:/app/data
+      # CPU temperature in systemd stanje s Proxmox hosta (zapiše jih hcc-host-status timer,
+      # v CT 101 je /var/lib/hcc-host priklopljen na /srv/hcc-host). Neobvezno.
+      - /srv/hcc-host:/host-status:ro
     depends_on:
       - docker-proxy
     command: ["npm", "start"]

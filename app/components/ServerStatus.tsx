@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Chip } from "@mui/material";
 import type { NetworkOverview } from "../../lib/network";
+import ServerDetailsDialog from "./ServerDetailsDialog";
 
 const REFRESH_MS = 60_000;
 
@@ -19,6 +20,7 @@ function level(percent: number) {
 
 export default function ServerStatus() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [open, setOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -41,18 +43,25 @@ export default function ServerStatus() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (state.kind === "loading") return <Chip label="Server …" />;
-  if (state.kind === "error" || state.total === 0) {
-    return <Chip label="Server down" color="error" title="Unable to load service status" />;
+  let chip: { label: string; color?: "success" | "warning" | "error"; title: string };
+  if (state.kind === "loading") {
+    chip = { label: "Server …", title: "Loading service status" };
+  } else if (state.kind === "error" || state.total === 0) {
+    chip = { label: "Server down", color: "error", title: "Unable to load service status" };
+  } else {
+    const percent = Math.floor((state.up / state.total) * 100);
+    const { label, color } = level(percent);
+    chip = {
+      label: `${label} (${state.up})`,
+      color,
+      title: `${state.up} of ${state.total} services online/running (${percent} %) · click for server details`,
+    };
   }
 
-  const percent = Math.floor((state.up / state.total) * 100);
-  const { label, color } = level(percent);
   return (
-    <Chip
-      label={`${label} (${state.up})`}
-      color={color}
-      title={`${state.up} of ${state.total} services online/running (${percent} %)`}
-    />
+    <>
+      <Chip label={chip.label} color={chip.color} title={chip.title} onClick={() => setOpen(true)} clickable />
+      <ServerDetailsDialog open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
