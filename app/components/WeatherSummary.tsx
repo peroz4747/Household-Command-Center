@@ -6,6 +6,8 @@ import WbSunnyIcon from "@mui/icons-material/WbSunny";
 import CloudIcon from "@mui/icons-material/Cloud";
 import AcUnitIcon from "@mui/icons-material/AcUnit";
 import FlashOnIcon from "@mui/icons-material/FlashOn";
+import { useI18n } from "../i18n";
+import type { MessageKey } from "../../lib/i18n";
 
 interface ForecastItem {
   date: string;
@@ -41,6 +43,12 @@ export default function WeatherSummary() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { t, locale } = useI18n();
+  const describe = (code: number) => {
+    const key = `weather.code.${code}` as MessageKey;
+    const text = t(key);
+    return text === key ? t("weather.code.unknown") : text;
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -50,12 +58,12 @@ export default function WeatherSummary() {
       .then((data) => {
         if (!mounted) return;
         if (data.error) {
-          setError(data.error);
+          setError("load");
         } else {
           setWeather(data);
         }
       })
-      .catch(() => setError("Unable to load weather data."))
+      .catch(() => setError("load"))
       .finally(() => mounted && setLoading(false));
 
     return () => {
@@ -69,7 +77,7 @@ export default function WeatherSummary() {
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Box>
             <Typography variant="subtitle2" color="secondary">
-              Weather
+              {t("weather.overline")}
             </Typography>
             <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
               Maribor
@@ -80,7 +88,7 @@ export default function WeatherSummary() {
 
         {error ? (
           <Typography color="error" sx={{ mt: 3 }}>
-            {error}
+            {t("weather.loadError")}
           </Typography>
         ) : (
           <>
@@ -88,7 +96,9 @@ export default function WeatherSummary() {
               {weather ? `${Math.round(weather.current.temperature)}°` : "—"}
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 1, fontSize: 14 }}>
-              {weather ? `${weather.current.description} • Wind ${Math.round(weather.current.windspeed)} km/h` : ""}
+              {weather
+                ? `${describe(weather.current.weathercode)} • ${t("weather.wind", { n: Math.round(weather.current.windspeed) })}`
+                : ""}
             </Typography>
           </>
         )}
@@ -98,7 +108,7 @@ export default function WeatherSummary() {
           {(weather?.forecast ?? []).slice(0, 4).map((item) => (
             <Box key={item.date} sx={{ textAlign: "center", flex: 1 }}>
               <Typography variant="subtitle2" color="text.secondary" sx={{ fontSize: 12 }}>
-                {new Date(item.date).toLocaleDateString("en-US", { weekday: "short" })}
+                {new Date(item.date).toLocaleDateString(locale, { weekday: "short" })}
               </Typography>
               <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
                 {getWeatherIcon(item.weathercode)}

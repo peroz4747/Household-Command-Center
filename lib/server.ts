@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { PVE_NODE, pveConfigured, pveGet } from "./proxmox";
 import { webLinks } from "./webLinks";
+import { DEFAULT_LANG, translator, type Lang } from "./i18n";
 
 /* ---------------- Tipi ---------------- */
 
@@ -258,7 +259,8 @@ const rank: Record<CheckStatus, number> = { skip: 0, ok: 1, info: 1, warn: 2, fa
 const worst = (list: CheckStatus[]) =>
   list.reduce<CheckStatus>((acc, s) => (rank[s] > rank[acc] ? s : acc), "ok");
 
-export async function runHealthCheck(): Promise<HealthReport> {
+export async function runHealthCheck(lang: Lang = DEFAULT_LANG): Promise<HealthReport> {
+  const t = translator(lang);
   const checks: HealthCheck[] = [];
 
   let d: ServerDetails;
@@ -267,11 +269,11 @@ export async function runHealthCheck(): Promise<HealthReport> {
   } catch (e) {
     return {
       overall: "fail",
-      checks: [{ label: "Proxmox API", status: "fail", detail: (e as Error).message }],
+      checks: [{ label: t("hc.proxmoxApi"), status: "fail", detail: (e as Error).message }],
       generatedAt: new Date().toISOString(),
     };
   }
-  checks.push({ label: "Proxmox API", status: "ok", detail: `${d.node} online, ${d.pveVersion}` });
+  checks.push({ label: t("hc.proxmoxApi"), status: "ok", detail: t("hc.online", { node: d.node, version: d.pveVersion }) });
 
   const since = Math.floor(Date.now() / 1000) - 24 * 3600;
   const [resources, failedTasks, host] = await Promise.all([
@@ -287,26 +289,34 @@ export async function runHealthCheck(): Promise<HealthReport> {
 
   // CPU in RAM
   checks.push({
-    label: "CPU usage",
+    label: t("hc.cpu"),
     status: threshold(d.cpu.percent, 80, 95),
-    detail: `${fmtPct(d.cpu.percent)} · load ${d.cpu.loadavg.map((l) => l.toFixed(2)).join(" / ")} (${d.cpu.cores} threads)`,
+    detail: t("hc.cpuDetail", {
+      pct: fmtPct(d.cpu.percent),
+      load: d.cpu.loadavg.map((l) => l.toFixed(2)).join(" / "),
+      n: d.cpu.cores,
+    }),
   });
   checks.push({
-    label: "Memory usage",
+    label: t("hc.memory"),
     status: threshold(d.memory.percent, 85, 95),
     detail: fmtPct(d.memory.percent),
   });
 
   // Storage in ZFS
   for (const s of d.storages) {
-    checks.push({ label: `Storage ${s.name}`, status: threshold(s.percent, 80, 90), detail: `${fmtPct(s.percent)} used` });
+    checks.push({
+      label: t("hc.storage", { name: s.name }),
+      status: threshold(s.percent, 80, 90),
+      detail: t("hc.used", { pct: fmtPct(s.percent) }),
+    });
   }
   for (const p of d.pools) {
     const healthy = p.health === "ONLINE";
     checks.push({
-      label: `ZFS pool ${p.name}`,
+      label: t("hc.pool", { name: p.name }),
       status: healthy ? threshold(p.percent, 80, 90) : "fail",
-      detail: `${p.health} · ${fmtPct(p.percent)} used`,
+      detail: `${p.health} · ${t("hc.used", { pct: fmtPct(p.percent) })}`,
     });
   }
 
@@ -314,23 +324,27 @@ export async function runHealthCheck(): Promise<HealthReport> {
   for (const disk of d.disks) {
     const smartOk = disk.health === "PASSED" || disk.health === "OK";
     checks.push({
-      label: `SMART ${disk.device}`,
+      label: t("hc.smart", { device: disk.device }),
       status: smartOk ? "ok" : disk.health === "UNKNOWN" ? "warn" : "fail",
       detail: `${disk.health} · ${disk.model}`,
     });
     if (disk.temp !== undefined) {
       // Vrteči diski so občutljivejši na toploto kot SSD/NVMe.
       const [warn, fail] = disk.type === "ssd" || disk.type === "nvme" ? [60, 70] : [50, 55];
-      checks.push({ label: `Temperature ${disk.device}`, status: threshold(disk.temp, warn, fail), detail: `${disk.temp} °C` });
+      checks.push({
+        label: t("hc.temp", { device: disk.device }),
+        status: threshold(disk.temp, warn, fail),
+        detail: `${disk.temp} °C`,
+      });
     }
   }
 
   // CPU temperatura (s hosta)
   if (d.cpuTemps?.length) {
     const max = Math.max(...d.cpuTemps.map((t) => t.temp));
-    checks.push({ label: "CPU temperature", status: threshold(max, 80, 90), detail: `max ${max.toFixed(0)} °C` });
+    checks.push({ label: t("hc.cpuTemp"), status: threshold(max, 80, 90), detail: t("hc.cpuTempMax", { n: max.toFixed(0) }) });
   } else {
-    checks.push({ label: "CPU temperature", status: "skip", detail: "Host sensor data not available" });
+    checks.push({ label: t("hc.cpuTemp"), status: "skip", detail: t("hc.noHostSensor") });
   }
 
   // Gostje
@@ -338,60 +352,63 @@ export async function runHealthCheck(): Promise<HealthReport> {
     const guests = resources.filter((r) => !r.template);
     const stopped = guests.filter((r) => r.status !== "running");
     checks.push({
-      label: "Guests",
+      label: t("hc.guests"),
       status: stopped.length ? "warn" : "ok",
       detail: stopped.length
-        ? `Not running: ${stopped.map((g) => `${g.vmid} ${g.name ?? ""}`.trim()).join(", ")}`
-        : `All ${guests.length} running`,
+        ? t("hc.notRunning", { list: stopped.map((g) => `${g.vmid} ${g.name ?? ""}`.trim()).join(", ") })
+        : t("hc.allRunning", { n: guests.length }),
     });
   } else {
-    checks.push({ label: "Guests", status: "warn", detail: "Unable to list guests" });
+    checks.push({ label: t("hc.guests"), status: "warn", detail: t("hc.guestsError") });
   }
 
   // Napake v taskih zadnjih 24 h
   if (failedTasks) {
     checks.push({
-      label: "Failed tasks (24 h)",
+      label: t("hc.failedTasks"),
       status: failedTasks.length ? "warn" : "ok",
       detail: failedTasks.length
         ? failedTasks
             .slice(0, 5)
             .map((t) => `${t.type}${t.id ? ` ${t.id}` : ""}: ${t.status}`)
             .join("; ")
-        : "None",
+        : t("hc.none"),
     });
   }
 
   // Systemd enote na hostu
   if (host) {
     checks.push({
-      label: "Host services (systemd)",
+      label: t("hc.hostServices"),
       status: host.failedUnits.length ? "fail" : "ok",
-      detail: host.failedUnits.length ? `Failed: ${host.failedUnits.join(", ")}` : "No failed units",
+      detail: host.failedUnits.length ? t("hc.failedUnits", { list: host.failedUnits.join(", ") }) : t("hc.noFailedUnits"),
     });
   } else {
-    checks.push({ label: "Host services (systemd)", status: "skip", detail: "Host status data not available" });
+    checks.push({ label: t("hc.hostServices"), status: "skip", detail: t("hc.noHostStatus") });
   }
 
   // Posodobitve
   if (updates) {
     checks.push({
-      label: "Package updates",
+      label: t("hc.updates"),
       status: updates.length ? "info" : "ok",
       detail: updates.length
-        ? `${updates.length} packages can be upgraded: ${updates.slice(0, 8).join(", ")}${updates.length > 8 ? ", …" : ""}`
-        : "Up to date",
+        ? t("hc.updatesAvailable", {
+            n: updates.length,
+            list: `${updates.slice(0, 8).join(", ")}${updates.length > 8 ? ", …" : ""}`,
+          })
+        : t("hc.upToDate"),
       // Dashboard je read-only: nadgradnjo se zažene v Proxmox UI (Updates → Upgrade odpre konzolo).
       action: updates.length
-        ? { label: "Update", href: `${webLinks[PVE_NODE] ?? "https://proxmox.home/"}#v1:0:=node%2F${PVE_NODE}:4:=updates` }
+        ? { label: t("hc.update"), href: `${webLinks[PVE_NODE] ?? "https://proxmox.home/"}#v1:0:=node%2F${PVE_NODE}:4:=updates` }
         : undefined,
     });
   } else {
-    checks.push({ label: "Package updates", status: "skip", detail: "Unable to read update list" });
+    checks.push({ label: t("hc.updates"), status: "skip", detail: t("hc.updatesError") });
   }
 
   if (d.errors.length) {
-    checks.push({ label: "Partial data", status: "warn", detail: d.errors.join("; ") });
+    checks.push({ label: t("hc.partial"), status: "warn", detail: d.errors.join("; ") });
   }
 
   return { overall: worst(checks.map((c) => c.status)), checks, generatedAt: new Date().toISOString() };

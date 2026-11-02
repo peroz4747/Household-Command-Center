@@ -3,8 +3,10 @@
 import type { ReactNode } from "react";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { useMemo } from "react";
+import { I18nProvider } from "./i18n";
+import type { Lang } from "../lib/i18n";
 
-export default function Providers({ children }: { children: ReactNode }) {
+export default function Providers({ lang, children }: { lang: Lang; children: ReactNode }) {
   const theme = useMemo(
     () =>
       createTheme({
@@ -45,7 +47,7 @@ export default function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {children}
+      <I18nProvider initialLang={lang}>{children}</I18nProvider>
     </ThemeProvider>
   );
 }

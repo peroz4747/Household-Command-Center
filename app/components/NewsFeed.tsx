@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Typography, Link, List, ListItem, IconButton } from "@mui/material";
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import { useI18n } from "../i18n";
 
 type NewsItem = { title: string; link?: string; pubDate?: string; image?: string };
 
@@ -10,6 +11,7 @@ export default function NewsFeed() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
+  const { t, locale } = useI18n();
 
   const [visibleCount, setVisibleCount] = useState(Math.min(5, items.length || 1));
   const [paused, setPaused] = useState(false);
@@ -83,14 +85,14 @@ export default function NewsFeed() {
   return (
     <Box sx={{ width: "100%" }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-        <Typography variant="h6">Todays news</Typography>
-        <Typography variant="caption" color="text.secondary">source: 24ur</Typography>
+        <Typography variant="h6">{t("news.title")}</Typography>
+        <Typography variant="caption" color="text.secondary">{t("news.source")}</Typography>
       </Box>
 
       {loading ? (
-        <Typography variant="body2">Nalaganje...</Typography>
+        <Typography variant="body2">{t("common.loading")}</Typography>
       ) : items.length === 0 ? (
-        <Typography variant="body2">Ni novic za danes.</Typography>
+        <Typography variant="body2">{t("news.none")}</Typography>
       ) : (
         <Box sx={{ position: 'relative', overflow: 'hidden', borderRadius: 1 }}>
           <Box
@@ -132,7 +134,7 @@ export default function NewsFeed() {
                         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{it.title}</Typography>
                         {it.pubDate ? (
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(it.pubDate).toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(it.pubDate).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
                           </Typography>
                         ) : null}
                       </Box>

@@ -2,17 +2,17 @@ import { Box, Card, CardContent, Typography } from "@mui/material";
 
 
 
-export default function NetworkAndEnergy({ items }: { items: any[] } ) {
+export default function NetworkAndEnergy({ items, overline, title }: { items: any[]; overline: string; title: string }) {
 
     return (
         <Card sx={{ minHeight: 340 }}>
               <CardContent>
                 <Typography variant="subtitle2" color="secondary">
-                  Network & energy
+                  {overline}
                 </Typography>
 
                 <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
-                  Home status details
+                  {title}
                 </Typography>
 
                 <Box sx={{ display: "grid", gap: 2 }}>

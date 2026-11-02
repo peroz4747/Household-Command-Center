@@ -35,6 +35,8 @@ import {
   Typography,
 } from "@mui/material";
 import type { CheckStatus, HealthReport, ServerDetails, TaskEntry } from "../../lib/server";
+import { useI18n } from "../i18n";
+import type { MessageKey } from "../../lib/i18n";
 
 const REFRESH_MS = 10_000;
 const mono = { fontFamily: "var(--font-geist-mono), monospace" };
@@ -64,8 +66,8 @@ function formatUptime(seconds: number) {
   return d ? `${d}d ${h}h ${m}m` : h ? `${h}h ${m}m` : `${m}m`;
 }
 
-const formatTime = (unix: number) =>
-  new Date(unix * 1000).toLocaleString("de-AT", {
+const formatTime = (unix: number, locale: string) =>
+  new Date(unix * 1000).toLocaleString(locale, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -74,8 +76,8 @@ const formatTime = (unix: number) =>
     timeZone: "Europe/Ljubljana",
   });
 
-function taskDuration(t: TaskEntry) {
-  if (!t.end) return "running";
+function taskDuration(t: TaskEntry, running: string) {
+  if (!t.end) return running;
   const s = t.end - t.start;
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
@@ -95,12 +97,12 @@ const checkIcon: Record<CheckStatus, ReactNode> = {
   skip: <RemoveCircleOutlineIcon fontSize="small" color="disabled" />,
 };
 
-const overallText: Record<CheckStatus, { text: string; severity: "success" | "info" | "warning" | "error" }> = {
-  ok: { text: "Everything looks good.", severity: "success" },
-  info: { text: "Everything looks good.", severity: "success" },
-  skip: { text: "Everything looks good.", severity: "success" },
-  warn: { text: "Server is running, but some checks need attention.", severity: "warning" },
-  fail: { text: "Problems found – see failed checks below.", severity: "error" },
+const overallText: Record<CheckStatus, { text: MessageKey; severity: "success" | "info" | "warning" | "error" }> = {
+  ok: { text: "sd.overall.ok", severity: "success" },
+  info: { text: "sd.overall.ok", severity: "success" },
+  skip: { text: "sd.overall.ok", severity: "success" },
+  warn: { text: "sd.overall.warn", severity: "warning" },
+  fail: { text: "sd.overall.fail", severity: "error" },
 };
 
 /* ---------------- Gradniki ---------------- */
@@ -176,13 +178,14 @@ function UsageBar({ label, sub, used, total, percent }: { label: string; sub?: s
 }
 
 function TempChip({ label, temp, warn, fail }: { label: string; temp?: number; warn: number; fail: number }) {
+  const { t } = useI18n();
   return (
     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1, py: 0.5 }}>
       <Typography variant="body2" sx={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </Typography>
       {temp === undefined ? (
-        <Chip size="small" label="n/a" />
+        <Chip size="small" label={t("common.na")} />
       ) : (
         <Chip size="small" label={`${temp.toFixed(0)} °C`} color={levelFor(temp, warn, fail)} variant="outlined" />
       )}
@@ -194,6 +197,7 @@ function TaskRow({ task }: { task: TaskEntry }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { t, locale } = useI18n();
 
   const toggle = async () => {
     const next = !open;
@@ -214,17 +218,17 @@ function TaskRow({ task }: { task: TaskEntry }) {
     <Fragment>
       <TableRow hover onClick={() => void toggle()} sx={{ cursor: "pointer", "& > td": { borderBottom: open ? "none" : undefined } }}>
         <TableCell padding="checkbox">
-          <IconButton size="small" aria-label={open ? "Hide log" : "Show log"}>
+          <IconButton size="small" aria-label={open ? t("sd.hideLog") : t("sd.showLog")}>
             {open ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
           </IconButton>
         </TableCell>
-        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatTime(task.start)}</TableCell>
+        <TableCell sx={{ whiteSpace: "nowrap" }}>{formatTime(task.start, locale)}</TableCell>
         <TableCell>{task.type}</TableCell>
         <TableCell>{task.id || "–"}</TableCell>
         <TableCell>{task.user}</TableCell>
-        <TableCell>{taskDuration(task)}</TableCell>
+        <TableCell>{taskDuration(task, t("sd.running"))}</TableCell>
         <TableCell>
-          <Chip size="small" label={task.status ?? "running"} color={taskStatusColor(task)} variant="outlined" />
+          <Chip size="small" label={task.status ?? t("sd.running")} color={taskStatusColor(task)} variant="outlined" />
         </TableCell>
       </TableRow>
       <TableRow>
@@ -246,7 +250,7 @@ function TaskRow({ task }: { task: TaskEntry }) {
                 wordBreak: "break-all",
               }}
             >
-              {error ? `Unable to load log: ${error}` : lines ? lines.join("\n") || "(empty log)" : "Loading…"}
+              {error ? t("sd.logError", { error }) : lines ? lines.join("\n") || t("sd.emptyLog") : t("common.loading")}
             </Box>
           </Collapse>
         </TableCell>
@@ -259,6 +263,7 @@ function HealthCheckPanel() {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<HealthReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { t, locale } = useI18n();
 
   const run = async () => {
     setRunning(true);
@@ -276,7 +281,7 @@ function HealthCheckPanel() {
 
   return (
     <Section
-      title="Health check"
+      title={t("sd.health")}
       action={
         <Button
           variant="contained"
@@ -285,23 +290,22 @@ function HealthCheckPanel() {
           onClick={() => void run()}
           disabled={running}
         >
-          {running ? "Checking…" : report ? "Run again" : "Run health check"}
+          {running ? t("sd.healthRunning") : report ? t("sd.healthAgain") : t("sd.healthRun")}
         </Button>
       }
     >
-      {error && <Alert severity="error">Health check failed ({error}).</Alert>}
+      {error && <Alert severity="error">{t("sd.healthFailed", { error })}</Alert>}
       {!report && !error && (
         <Typography variant="body2" color="text.secondary">
-          Checks CPU, memory, storage, ZFS pools, SMART status and temperature of every disk, CPU temperature, guests,
-          failed tasks in the last 24 hours, host services and package updates.
+          {t("sd.healthIntro")}
         </Typography>
       )}
       {report && (
         <>
           <Alert severity={overallText[report.overall].severity} sx={{ mb: 1.5 }}>
-            {overallText[report.overall].text}{" "}
+            {t(overallText[report.overall].text)}{" "}
             <Typography component="span" variant="caption" color="text.secondary">
-              ({new Date(report.generatedAt).toLocaleTimeString("de-AT", { timeZone: "Europe/Ljubljana" })})
+              ({new Date(report.generatedAt).toLocaleTimeString(locale, { timeZone: "Europe/Ljubljana" })})
             </Typography>
           </Alert>
           <Stack spacing={0.5}>
@@ -343,6 +347,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
   const [data, setData] = useState<ServerDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -375,22 +380,22 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
         <Box>
-          Server {data?.node ?? ""}
+          {t("sd.title", { node: data?.node ?? "" })}
           {data && (
             <Typography variant="body2" color="text.secondary">
-              {data.pveVersion.split("/").slice(0, 2).join(" ")} · {data.kernel} · up {formatUptime(data.uptime)}
+              {data.pveVersion.split("/").slice(0, 2).join(" ")} · {data.kernel} · {t("sd.up", { time: formatUptime(data.uptime) })}
             </Typography>
           )}
         </Box>
         <Box>
-          <Tooltip title="Refresh">
+          <Tooltip title={t("common.refresh")}>
             <span>
-              <IconButton size="small" onClick={() => void load()} disabled={loading} aria-label="Refresh">
+              <IconButton size="small" onClick={() => void load()} disabled={loading} aria-label={t("common.refresh")}>
                 <RefreshIcon fontSize="small" />
               </IconButton>
             </span>
           </Tooltip>
-          <IconButton size="small" onClick={onClose} aria-label="Close">
+          <IconButton size="small" onClick={onClose} aria-label={t("common.close")}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
@@ -399,7 +404,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
       <DialogContent dividers sx={{ minHeight: "50vh" }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            Unable to load server data ({error}).
+            {t("sd.loadError", { error })}
           </Alert>
         )}
         {data?.errors.map((e) => (
@@ -420,7 +425,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                 <Gauge
                   label="CPU"
                   percent={data.cpu.percent}
-                  caption={`${data.cpu.cores} threads · load ${data.cpu.loadavg[0].toFixed(2)}`}
+                  caption={t("sd.threadsLoad", { n: data.cpu.cores, load: data.cpu.loadavg[0].toFixed(2) })}
                   warn={80}
                   fail={95}
                 />
@@ -451,21 +456,21 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                 <Paper variant="outlined" sx={{ p: 2, textAlign: "center", backgroundColor: "rgba(255,255,255,0.02)" }}>
                   <Box sx={{ height: 88, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Typography variant="h4" sx={{ fontWeight: 700 }} color={cpuMax !== undefined ? `${levelFor(cpuMax, 80, 90)}.main` : "text.secondary"}>
-                      {cpuMax !== undefined ? `${cpuMax.toFixed(0)}°C` : "n/a"}
+                      {cpuMax !== undefined ? `${cpuMax.toFixed(0)}°C` : t("common.na")}
                     </Typography>
                   </Box>
                   <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                    CPU temperature
+                    {t("sd.cpuTemp")}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {cpuMax !== undefined ? "hottest sensor" : "host sensor data not available"}
+                    {cpuMax !== undefined ? t("sd.hottest") : t("sd.noHostSensor")}
                   </Typography>
                 </Paper>
               </Box>
 
               <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", md: "3fr 2fr" } }}>
                 {/* Storage */}
-                <Section title="Storage">
+                <Section title={t("sd.storage")}>
                   <Stack spacing={1.5}>
                     {data.pools.map((p) => (
                       <UsageBar key={`pool-${p.name}`} label={p.name} sub={`ZFS · ${p.health}`} used={p.used} total={p.total} percent={p.percent} />
@@ -477,7 +482,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                 </Section>
 
                 {/* Temperatures */}
-                <Section title="Temperatures">
+                <Section title={t("sd.temperatures")}>
                   {data.cpuTemps?.length ? (
                     <Box sx={{ mb: 1.5 }}>
                       {data.cpuTemps.map((t) => (
@@ -486,7 +491,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                     </Box>
                   ) : (
                     <Typography variant="caption" color="text.secondary" component="p" sx={{ mb: 1 }}>
-                      CPU temperatures not available (host sensor data missing).
+                      {t("sd.noCpuTemps")}
                     </Typography>
                   )}
                   {data.disks.map((d) => {
@@ -507,18 +512,18 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
               <HealthCheckPanel />
 
               {/* Tasks */}
-              <Section title="Proxmox tasks">
+              <Section title={t("sd.tasks")}>
                 <TableContainer sx={{ maxHeight: 420 }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
                         <TableCell padding="checkbox" />
-                        <TableCell>Started</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell>ID</TableCell>
-                        <TableCell>User</TableCell>
-                        <TableCell>Duration</TableCell>
-                        <TableCell>Status</TableCell>
+                        <TableCell>{t("sd.col.started")}</TableCell>
+                        <TableCell>{t("sd.col.type")}</TableCell>
+                        <TableCell>{t("sd.col.id")}</TableCell>
+                        <TableCell>{t("sd.col.user")}</TableCell>
+                        <TableCell>{t("sd.col.duration")}</TableCell>
+                        <TableCell>{t("sd.col.status")}</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -528,7 +533,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                       {!data.tasks.length && (
                         <TableRow>
                           <TableCell colSpan={7} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                            No tasks.
+                            {t("sd.noTasks")}
                           </TableCell>
                         </TableRow>
                       )}

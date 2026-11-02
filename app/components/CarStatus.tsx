@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Box, Button, Card, CardContent, Checkbox, Chip, LinearProgress, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  IconButton,
+  LinearProgress,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import LocalGasStationIcon from "@mui/icons-material/LocalGasStation";
 import SpeedIcon from "@mui/icons-material/Speed";
@@ -12,28 +25,91 @@ import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import AcUnitIcon from "@mui/icons-material/AcUnit";
 import WbSunnyOutlinedIcon from "@mui/icons-material/WbSunnyOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import type { CarLive, CarResponse, Tyres, TyreSeason } from "../../lib/car";
+import type { MessageKey, Translate } from "../../lib/i18n";
+import { useI18n } from "../i18n";
 
-// ZAČASNO: izmišljeni podatki, dokler ni pravega vira (OBD/aplikacija proizvajalca, ročni vnos).
-// Pnevmatike (kljukica) se shranjujejo v data/car.json prek /api/car.
-const DEMO = {
-  name: "Family car",
-  model: "Octavia Combi 2.0 TDI",
-  plate: "MB NA-123",
-  locked: true,
-  fuelPercent: 62,
-  rangeKm: 610,
-  odometerKm: 112_430,
-  consumption: { avg: 5.4, lastTrip: 6.1, monthKm: 842 },
-  location: { label: "Home", lat: 46.5547, lon: 15.6459, updated: "12 min ago" },
-  insurance: "2027-03-14",
-  registration: "2027-03-14",
-  vignette: "2027-01-20",
-  service: { date: "2026-12-05", atKm: 120_000 },
+// Ročni podatki: Škoda API jih ne ponuja (zavarovanje, registracija, vinjeta, servis).
+const MANUAL = {
+  model: "Kodiaq",
+  insurance: "2027-10-28",
+  registration: "2027-10-28",
+  vignette: "2027-05-04",
+  // Servis: datum ali kilometri do servisa (kot jih je pokazal avto na dan kmLeftAsOf).
+  service: { date: "2027-10-26", kmLeft: 13_800, kmLeftAsOf: "2026-11-02" },
 };
 
-type TyreSeason = "summer" | "winter";
-type Tyres = { mounted: TyreSeason; changedOn: string | null };
+// Demo stanje, dokler v .env ni SKODA_API_KEY in SKODA_VIN.
+const DEMO = {
+  plate: "MB NA-123",
+  locked: true as boolean | null,
+  fuelPercent: 62 as number | null,
+  rangeKm: 610 as number | null,
+  odometerKm: 112_430 as number | null,
+  monthKm: 842 as number | null,
+  consumption: { avg: 5.4, lastTrip: 6.1 } as { avg: number; lastTrip: number } | null,
+  adBlueRangeKm: null as number | null,
+  location: { label: "car.home" as MessageKey | string, lat: 46.5547, lon: 15.6459, lastKnown: false } as {
+    label: MessageKey | string;
+    lat: number | null;
+    lon: number | null;
+    lastKnown: boolean;
+  },
+  updated: new Date(Date.now() - 12 * 60_000).toISOString() as string | null,
+};
+type View = typeof DEMO & { title: string };
+
+// Škoda API je nastavljen, a podatki še niso bili prebrani.
+const EMPTY: Omit<View, "title"> = {
+  plate: "",
+  locked: null,
+  fuelPercent: null,
+  rangeKm: null,
+  odometerKm: null,
+  monthKm: null,
+  consumption: null,
+  adBlueRangeKm: null,
+  location: { label: "car.noData", lat: null, lon: null, lastKnown: false },
+  updated: null,
+};
+
+function timeAgo(iso: string | null, now: Date, t: Translate) {
+  if (!iso) return t("common.never");
+  const min = Math.round((now.getTime() - Date.parse(iso)) / 60_000);
+  if (min < 1) return t("common.justNow");
+  if (min < 60) return t("common.minAgo", { n: min });
+  const h = Math.round(min / 60);
+  if (h < 48) return t("common.hAgo", { n: h });
+  return t("common.dAgo", { n: Math.round(h / 24) });
+}
+
+// Oznaka lokacije je ključ za prevod ali naslov iz API-ja.
+const isKey = (s: string): s is MessageKey => s.startsWith("car.");
+
+function fromLive(live: CarLive): View {
+  const p = live.parking;
+  return {
+    title: live.name && live.name !== MANUAL.model ? `${live.name}` : MANUAL.model,
+    plate: live.licensePlate ?? "",
+    locked: live.locked,
+    fuelPercent: live.fuelPercent,
+    rangeKm: live.rangeKm,
+    odometerKm: live.odometerKm,
+    monthKm: live.monthKm,
+    consumption: null,
+    adBlueRangeKm: live.adBlueRangeKm,
+    location: {
+      label:
+        p.state === "IN_MOTION" ? "car.driving" : (p.address ?? (p.lat !== null ? "car.parked" : "car.locationUnavailable")),
+      lat: p.lat,
+      lon: p.lon,
+      lastKnown: p.lastKnown,
+    },
+    updated: live.capturedAt ?? live.fetchedAt,
+  };
+}
 
 const DAY_MS = 24 * 3600 * 1000;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -44,9 +120,9 @@ const parseDate = (s: string) => {
 const toDateString = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const daysUntil = (date: Date, now: Date) => Math.round((startOfDay(date).getTime() - startOfDay(now).getTime()) / DAY_MS);
-const fmtDate = (d: Date, withYear = true) =>
-  d.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
-const fmtKm = (n: number) => `${n.toLocaleString("sl-SI")} km`;
+const fmtDate = (d: Date, locale: string, withYear = true) =>
+  d.toLocaleDateString(locale, { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
+const fmtKm = (n: number, locale: string) => `${n.toLocaleString(locale)} km`;
 
 // Slovenija: zimska oprema obvezna od 15. 11. do 15. 3.
 function nextTyreChange(mounted: TyreSeason, now: Date) {
@@ -66,10 +142,10 @@ function dueColor(days: number): "error" | "warning" | "success" {
   return "success";
 }
 
-function daysLabel(days: number) {
-  if (days < 0) return `${-days} d overdue`;
-  if (days === 0) return "today";
-  return `${days} d`;
+function daysLabel(days: number, t: Translate) {
+  if (days < 0) return t("common.daysOverdue", { n: -days });
+  if (days === 0) return t("common.today");
+  return t("common.days", { n: days });
 }
 
 function Stat({ icon, label, value, sub }: { icon: ReactNode; label: string; value: string; sub?: string }) {
@@ -90,6 +166,7 @@ function Stat({ icon, label, value, sub }: { icon: ReactNode; label: string; val
 }
 
 function Deadline({ icon, label, date, now, extra }: { icon: ReactNode; label: string; date: Date; now: Date; extra?: string }) {
+  const { t, locale } = useI18n();
   const days = daysUntil(date, now);
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, py: 0.75 }}>
@@ -99,34 +176,62 @@ function Deadline({ icon, label, date, now, extra }: { icon: ReactNode; label: s
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {fmtDate(date)}
+          {fmtDate(date, locale)}
           {extra ? ` · ${extra}` : ""}
         </Typography>
       </Box>
-      <Chip size="small" variant="outlined" color={dueColor(days)} label={daysLabel(days)} />
+      <Chip size="small" variant="outlined" color={dueColor(days)} label={daysLabel(days, t)} />
     </Box>
   );
 }
 
 export default function CarStatus() {
+  const { t, locale } = useI18n();
   const [now, setNow] = useState<Date | null>(null);
   const [tyres, setTyres] = useState<Tyres | null>(null);
+  const [car, setCar] = useState<CarResponse | null>(null);
   const [previous, setPrevious] = useState<Tyres | null>(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageKey | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Na Škoda API gremo samo ob kliku (omejitev 20 klicev/uro); GET vrne zadnje shranjene podatke.
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/car", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.tyres) throw new Error("refresh");
+      setNow(new Date());
+      setCar(data);
+      setTyres(data.tyres);
+      setError(null);
+    } catch {
+      setError("car.refreshError");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    setNow(new Date());
-    fetch("/api/car")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setTyres(data.tyres);
-      })
-      .catch(() => {
-        setError("Unable to load tyre status");
-        setTyres({ mounted: "summer", changedOn: null });
-      });
+    const load = () =>
+      fetch("/api/car")
+        .then((r) => r.json())
+        .then((data: CarResponse & { error?: string }) => {
+          if (!data.tyres) throw new Error("load");
+          setNow(new Date());
+          setCar(data);
+          setTyres(data.tyres);
+        })
+        .catch(() => {
+          setNow(new Date());
+          setError("car.loadError");
+          setTyres((t) => t ?? { mounted: "summer", changedOn: null });
+        });
+    void load();
+    // Le prebere shranjeno stanje (brez klica na Škoda API), npr. po osvežitvi z druge naprave.
+    const timer = setInterval(load, 5 * 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   const saveTyres = async (next: Tyres, prev: Tyres | null) => {
@@ -138,22 +243,46 @@ export default function CarStatus() {
         body: JSON.stringify({ tyres: next }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Unable to save");
+      if (!res.ok) throw new Error("save");
       setTyres(data.tyres);
       setPrevious(prev);
       setError(null);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      setError("car.saveError");
     } finally {
       setSaving(false);
     }
   };
 
-  const d = DEMO;
+  const isSkoda = car?.source === "skoda";
+  const isLive = isSkoda && car!.live !== null;
+  const d: View =
+    isLive && now
+      ? fromLive(car!.live!)
+      : isSkoda
+        ? { ...EMPTY, title: MANUAL.model }
+        : { ...DEMO, title: MANUAL.model };
   const { lat, lon } = d.location;
-  const bbox = [lon - 0.012, lat - 0.006, lon + 0.012, lat + 0.006].join(",");
-  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
-  const kmToService = d.service.atKm - d.odometerKm;
+  const hasMap = lat !== null && lon !== null;
+  const bbox = hasMap ? [lon - 0.012, lat - 0.006, lon + 0.012, lat + 0.006].join(",") : "";
+  const mapUrl = hasMap
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`
+    : "";
+  const updatedAgo = now ? timeAgo(d.updated, now, t) : "";
+  const locationLabel = isKey(d.location.label) ? t(d.location.label) : d.location.label;
+  const keyDays = isLive && car!.live!.keyExpiresAt && now ? daysUntil(new Date(car!.live!.keyExpiresAt), now) : null;
+  const apiErr = car?.source === "skoda" ? car.error : null;
+  const apiError = apiErr
+    ? apiErr.code === "other"
+      ? t("car.err.other", { detail: apiErr.detail ?? "" })
+      : t(`car.err.${apiErr.code}`)
+    : null;
+  // Deli, ki jih avto podpira, a jih ne deli (zasebnostne nastavitve v avtu / storitve).
+  const PARTS = ["VEHICLE_STATUS", "FUEL_STATUS", "ODOMETER", "PARKING_POSITION"] as const;
+  const disabledParts = isLive
+    ? PARTS.filter((part) => car!.live!.partErrors.includes(`${part}_DISABLED`)).map((part) => t(`car.part.${part}`))
+    : [];
+  const disabledHint = disabledParts.length ? t("car.disabled", { parts: disabledParts.join(", ") }) : null;
   const change = now && tyres ? nextTyreChange(tyres.mounted, now) : null;
   const changeDays = change && now ? daysUntil(change.date, now) : 0;
 
@@ -164,24 +293,39 @@ export default function CarStatus() {
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 2, mb: 2.5, flexWrap: "wrap" }}>
           <Box>
             <Typography variant="subtitle2" color="secondary">
-              Car
+              {t("car.overline")}
             </Typography>
             <Typography variant="h6" sx={{ mt: 1, fontWeight: 700, lineHeight: 1.3 }}>
-              {d.model}
+              {d.title}
               <Typography component="span" color="text.secondary" sx={{ ml: 1, fontSize: 14, fontWeight: 500 }}>
                 {d.plate}
               </Typography>
             </Typography>
           </Box>
           <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-            <Chip
-              size="small"
-              icon={<LockOutlinedIcon />}
-              label={d.locked ? "Parked · Locked" : "Unlocked"}
-              color={d.locked ? "secondary" : "warning"}
-              variant="outlined"
-            />
-            <Chip size="small" label="Demo" variant="outlined" sx={{ color: "text.secondary" }} />
+            {d.locked !== null && (
+              <Chip
+                size="small"
+                icon={d.locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />}
+                label={d.locked ? t("car.locked") : t("car.unlocked")}
+                color={d.locked ? "secondary" : "warning"}
+                variant="outlined"
+              />
+            )}
+            {isSkoda ? (
+              <>
+                <Chip size="small" label={t("car.skodaChip", { ago: updatedAgo })} variant="outlined" sx={{ color: "text.secondary" }} />
+                <Tooltip title={t("car.refreshTooltip")}>
+                  <span>
+                    <IconButton size="small" onClick={() => void refresh()} disabled={refreshing} aria-label={t("car.refreshAria")}>
+                      {refreshing ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </>
+            ) : (
+              <Chip size="small" label={t("common.demo")} variant="outlined" sx={{ color: "text.secondary" }} />
+            )}
           </Box>
         </Box>
 
@@ -198,9 +342,14 @@ export default function CarStatus() {
                 border: "1px solid rgba(148,163,184,0.15)",
               }}
             >
+              {!hasMap ? (
+                <Box sx={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "text.secondary" }}>
+                  <Typography variant="caption">{t("car.locationUnavailable")}</Typography>
+                </Box>
+              ) : (
               <Box
                 component="iframe"
-                title="Car location"
+                title={t("car.mapTitle")}
                 src={mapUrl}
                 loading="lazy"
                 sx={{
@@ -213,12 +362,15 @@ export default function CarStatus() {
                   filter: "invert(0.92) hue-rotate(180deg) saturate(0.6) brightness(0.95)",
                 }}
               />
+              )}
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <PlaceOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
-              <Typography variant="caption" color="text.secondary">
-                {d.location.label} · updated {d.location.updated}
+              <Typography variant="caption" color="text.secondary" noWrap title={locationLabel}>
+                {locationLabel}
+                {isLive || !d.updated ? "" : ` · ${t("car.updated", { ago: updatedAgo })}`}
               </Typography>
+              {hasMap && (
               <Button
                 size="small"
                 href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`}
@@ -226,8 +378,9 @@ export default function CarStatus() {
                 rel="noopener noreferrer"
                 sx={{ ml: "auto", textTransform: "none", minWidth: 0, py: 0 }}
               >
-                Open map
+                {t("car.openMap")}
               </Button>
+              )}
             </Box>
           </Box>
 
@@ -236,31 +389,44 @@ export default function CarStatus() {
             <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: "rgba(148,163,184,0.06)" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: "text.secondary" }}>
                 <LocalGasStationIcon sx={{ fontSize: 16 }} />
-                <Typography variant="caption">Fuel</Typography>
-                <Typography variant="caption" sx={{ ml: "auto" }}>
-                  {fmtKm(d.rangeKm)} range
-                </Typography>
+                <Typography variant="caption">{t("car.fuel")}</Typography>
+                {d.rangeKm !== null && (
+                  <Typography variant="caption" sx={{ ml: "auto" }}>
+                    {t("car.range", { km: fmtKm(d.rangeKm, locale) })}
+                  </Typography>
+                )}
               </Box>
-              <Typography sx={{ mt: 0.5, fontWeight: 700, fontSize: 18 }}>{d.fuelPercent} %</Typography>
+              <Typography sx={{ mt: 0.5, fontWeight: 700, fontSize: 18 }}>
+                {d.fuelPercent !== null ? `${d.fuelPercent} %` : "–"}
+              </Typography>
               <LinearProgress
                 variant="determinate"
-                value={d.fuelPercent}
-                color={d.fuelPercent < 15 ? "error" : d.fuelPercent < 30 ? "warning" : "secondary"}
+                value={d.fuelPercent ?? 0}
+                color={d.fuelPercent === null ? "inherit" : d.fuelPercent < 15 ? "error" : d.fuelPercent < 30 ? "warning" : "secondary"}
                 sx={{ mt: 0.75, height: 6, borderRadius: 3, bgcolor: "rgba(148,163,184,0.15)" }}
               />
             </Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
-              <Stat
-                icon={<DirectionsCarIcon sx={{ fontSize: 16 }} />}
-                label="Consumption"
-                value={`${d.consumption.avg.toLocaleString("sl-SI")} l`}
-                sub={`per 100 km · last trip ${d.consumption.lastTrip.toLocaleString("sl-SI")}`}
-              />
+              {d.consumption ? (
+                <Stat
+                  icon={<DirectionsCarIcon sx={{ fontSize: 16 }} />}
+                  label={t("car.consumption")}
+                  value={`${d.consumption.avg.toLocaleString(locale)} l`}
+                  sub={t("car.perTrip", { n: d.consumption.lastTrip.toLocaleString(locale) })}
+                />
+              ) : (
+                <Stat
+                  icon={<DirectionsCarIcon sx={{ fontSize: 16 }} />}
+                  label={t("car.thisMonth")}
+                  value={d.monthKm !== null ? fmtKm(d.monthKm, locale) : "–"}
+                  sub={d.adBlueRangeKm !== null ? t("car.adBlue", { km: fmtKm(d.adBlueRangeKm, locale) }) : t("car.sinceFirst")}
+                />
+              )}
               <Stat
                 icon={<SpeedIcon sx={{ fontSize: 16 }} />}
-                label="Odometer"
-                value={fmtKm(d.odometerKm)}
-                sub={`${fmtKm(d.consumption.monthKm)} this month`}
+                label={t("car.odometer")}
+                value={d.odometerKm !== null ? fmtKm(d.odometerKm, locale) : "–"}
+                sub={d.consumption && d.monthKm !== null ? t("car.monthKm", { km: fmtKm(d.monthKm, locale) }) : undefined}
               />
             </Box>
           </Box>
@@ -269,15 +435,15 @@ export default function CarStatus() {
           <Box>
             {now && (
               <>
-                <Deadline icon={<ShieldOutlinedIcon fontSize="small" />} label="Insurance" date={parseDate(d.insurance)} now={now} />
-                <Deadline icon={<BadgeOutlinedIcon fontSize="small" />} label="Registration" date={parseDate(d.registration)} now={now} />
-                <Deadline icon={<ConfirmationNumberOutlinedIcon fontSize="small" />} label="Vignette" date={parseDate(d.vignette)} now={now} />
+                <Deadline icon={<ShieldOutlinedIcon fontSize="small" />} label={t("car.insurance")} date={parseDate(MANUAL.insurance)} now={now} />
+                <Deadline icon={<BadgeOutlinedIcon fontSize="small" />} label={t("car.registration")} date={parseDate(MANUAL.registration)} now={now} />
+                <Deadline icon={<ConfirmationNumberOutlinedIcon fontSize="small" />} label={t("car.vignette")} date={parseDate(MANUAL.vignette)} now={now} />
                 <Deadline
                   icon={<BuildOutlinedIcon fontSize="small" />}
-                  label="Next service"
-                  date={parseDate(d.service.date)}
+                  label={t("car.service")}
+                  date={parseDate(MANUAL.service.date)}
                   now={now}
-                  extra={`or ${fmtKm(d.service.atKm)} (${fmtKm(kmToService)} left)`}
+                  extra={t("car.serviceOrKm", { km: fmtKm(MANUAL.service.kmLeft, locale) })}
                 />
               </>
             )}
@@ -300,8 +466,8 @@ export default function CarStatus() {
                     <WbSunnyOutlinedIcon sx={{ fontSize: 16, color: "#facc15" }} />
                   )}
                   <Typography variant="caption" color="text.secondary">
-                    {tyres.mounted === "winter" ? "Winter" : "Summer"} tyres on
-                    {tyres.changedOn ? ` since ${fmtDate(parseDate(tyres.changedOn), false)}` : ""}
+                    {t(tyres.mounted === "winter" ? "car.tyres.winterOn" : "car.tyres.summerOn")}
+                    {tyres.changedOn ? ` ${t("car.tyres.since", { date: fmtDate(parseDate(tyres.changedOn), locale, false) })}` : ""}
                   </Typography>
                   {previous && (
                     <Button
@@ -310,7 +476,7 @@ export default function CarStatus() {
                       onClick={() => void saveTyres(previous, null)}
                       sx={{ ml: "auto", textTransform: "none", minWidth: 0, py: 0 }}
                     >
-                      Undo
+                      {t("car.tyres.undo")}
                     </Button>
                   )}
                 </Box>
@@ -328,19 +494,19 @@ export default function CarStatus() {
                   />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      Change to {change.to} tyres
+                      {t(change.to === "winter" ? "car.tyres.toWinter" : "car.tyres.toSummer")}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {change.kind === "by" ? "by" : "from"} {fmtDate(change.date)}
+                      {t(change.kind === "by" ? "car.tyres.by" : "car.tyres.from", { date: fmtDate(change.date, locale) })}
                     </Typography>
                   </Box>
                   {change.kind === "by" ? (
-                    <Chip size="small" variant="outlined" color={dueColor(changeDays)} label={daysLabel(changeDays)} />
+                    <Chip size="small" variant="outlined" color={dueColor(changeDays)} label={daysLabel(changeDays, t)} />
                   ) : (
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={changeDays <= 0 ? "now" : `in ${changeDays} d`}
+                      label={changeDays <= 0 ? t("car.tyres.now") : t("car.tyres.in", { n: changeDays })}
                       color={changeDays <= 0 ? "info" : "default"}
                     />
                   )}
@@ -348,11 +514,18 @@ export default function CarStatus() {
               </Box>
             )}
 
-            {error && (
-              <Typography variant="caption" color="error" sx={{ display: "block", mt: 1 }}>
-                {error}
-              </Typography>
-            )}
+            {[
+              { msg: error ? t(error) : null, color: "error" },
+              { msg: apiError, color: "error" },
+              { msg: disabledHint, color: "warning.main" },
+              { msg: keyDays !== null && keyDays < 14 ? t("car.keyExpires", { n: keyDays }) : null, color: "warning.main" },
+            ]
+              .filter((m) => m.msg)
+              .map((m) => (
+                <Typography key={m.msg} variant="caption" color={m.color} sx={{ display: "block", mt: 1 }}>
+                  {m.msg}
+                </Typography>
+              ))}
           </Box>
         </Box>
       </CardContent>

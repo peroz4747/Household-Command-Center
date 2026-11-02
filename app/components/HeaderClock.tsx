@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { Typography } from "@mui/material";
+import { useI18n } from "../i18n";
 
 // Uro izrišemo v brskalniku in jo osvežujemo vsako sekundo. Na strežniku
 // (kontejner teče v UTC) bi bil čas napačen in zamrznjen ob renderju.
@@ -18,16 +19,17 @@ const getServerSnapshot = () => null;
 
 export default function HeaderClock() {
   const minute = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const { locale } = useI18n();
   const now = minute ? new Date(Number(minute) * 60_000) : null;
 
   return (
     <>
       <Typography variant="h6" color="text.secondary" suppressHydrationWarning>
-        {now ? now.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", timeZone: TIME_ZONE }) : "--:--"}
+        {now ? now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", timeZone: TIME_ZONE }) : "--:--"}
       </Typography>
       <Typography variant="body2" color="text.secondary" suppressHydrationWarning>
         {now
-          ? now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: TIME_ZONE })
+          ? now.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", timeZone: TIME_ZONE })
           : " "}
       </Typography>
     </>

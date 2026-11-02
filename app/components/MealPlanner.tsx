@@ -6,6 +6,8 @@ import { alpha, useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import CasinoOutlinedIcon from "@mui/icons-material/CasinoOutlined";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
+import { useI18n } from "../i18n";
+import { mealIdeas } from "../../lib/i18n/mealIdeas";
 
 type MealItem = { id?: string; date: string; meal: string };
 
@@ -18,47 +20,13 @@ type Day = {
   isPast: boolean;
 };
 
-const mealIdeas = [
-  // Vegansko
-  "Vegan Burger with Sweet Potato Fries",
-  "Vegan Pizza",
-  "Chickpea Curry with Naan",
-  "Vegan Chili sin Carne",
-  "Crispy Tofu Pad Thai",
-  "Lentil Bolognese",
-  "Mushroom Stroganoff",
-  "Black Bean Tacos with Guacamole",
-  "Falafel Wrap with Hummus",
-  "Vegan Ramen",
-  "Teriyaki Tofu Rice Bowl",
-  "Stuffed Peppers with Rice & Beans",
-  "Creamy Vegan Mushroom Risotto",
-  "Thai Red Curry with Vegetables",
-  "Gnocchi with Pesto & Cherry Tomatoes",
-  "Vegan Lasagne",
-  "Cauliflower Buffalo Wings",
-  "Sweet Potato & Black Bean Burrito",
-  "Buddha Bowl with Peanut Sauce",
-  "Vegan Mac & Cheese",
-  // Ostalo
-  "Pasta Carbonara",
-  "Fish Tacos",
-  "Beef Stir Fry",
-  "Salmon with Lemon",
-  "Homemade Pizza",
-  "Beef Meatballs",
-  "Shakshuka",
-  "Chicken Fajitas",
-  "Butter Chicken",
-  "Smash Burgers",
-];
 
 // Lokalni datum (toISOString bi po polnoči do 1/2 h zjutraj vrnil včerajšnji dan).
 const toDateString = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** Ta in naslednji teden, od ponedeljka do nedelje. */
-function getTwoWeeks(now = new Date()): Day[][] {
+function getTwoWeeks(now: Date, locale: string): Day[][] {
   const today = toDateString(now);
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
   const weeks: Day[][] = [[], []];
@@ -67,9 +35,9 @@ function getTwoWeeks(now = new Date()): Day[][] {
     const date = toDateString(d);
     weeks[Math.floor(i / 7)].push({
       date,
-      weekday: d.toLocaleDateString("en-GB", { weekday: "short" }),
+      weekday: d.toLocaleDateString(locale, { weekday: "short" }).replace(/\.$/, ""),
       dayNumber: d.getDate(),
-      month: d.toLocaleDateString("en-GB", { month: "short" }),
+      month: d.toLocaleDateString(locale, { month: "short" }),
       isToday: date === today,
       isPast: date < today,
     });
@@ -84,7 +52,7 @@ async function request(method: "POST" | "PUT" | "DELETE", body: object) {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Unable to save meal");
+  if (!res.ok) throw new Error("save");
   return data;
 }
 
@@ -94,19 +62,24 @@ export default function MealPlanner() {
   const [meals, setMeals] = useState<Map<string, MealItem>>(new Map());
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"load" | "save" | null>(null);
+  const { t, lang, locale } = useI18n();
   // Prepreči dvojno shranjevanje (Enter sproži save, nato še blur).
   const skipBlur = useRef(false);
 
+  // Imena dni se izračunajo v izbranem jeziku.
   useEffect(() => {
-    setWeeks(getTwoWeeks());
+    setWeeks(getTwoWeeks(new Date(), locale));
+  }, [locale]);
+
+  useEffect(() => {
     fetch("/api/meals")
       .then((res) => res.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
         setMeals(new Map((data.items ?? []).map((m: MealItem) => [m.date, m])));
       })
-      .catch(() => setError("Unable to load meal planner data."));
+      .catch(() => setError("load"));
   }, []);
 
   const save = async (date: string, value: string) => {
@@ -130,7 +103,7 @@ export default function MealPlanner() {
       });
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError("save");
     }
   };
 
@@ -157,7 +130,7 @@ export default function MealPlanner() {
 
   const randomize = (date: string) => {
     const current = meals.get(date)?.meal;
-    const options = mealIdeas.filter((m) => m !== current);
+    const options = mealIdeas[lang].filter((m) => m !== current);
     const pick = options[Math.floor(Math.random() * options.length)];
     skipBlur.current = true;
     setEditing(null);
@@ -176,10 +149,10 @@ export default function MealPlanner() {
         <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: 2.5 }}>
           <Box>
             <Typography variant="subtitle2" color="secondary">
-              Meal planner
+              {t("meals.overline")}
             </Typography>
             <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
-              Dinners
+              {t("meals.title")}
               <Typography component="span" color="text.secondary" sx={{ ml: 1, fontSize: 14, fontWeight: 500 }}>
                 {range}
               </Typography>
@@ -188,7 +161,7 @@ export default function MealPlanner() {
           {weeks && (
             <Chip
               icon={<RestaurantIcon />}
-              label={`${planned}/${upcoming} planned`}
+              label={t("meals.planned", { n: planned, total: upcoming })}
               size="small"
               variant="outlined"
               color={planned === upcoming ? "secondary" : "default"}
@@ -198,7 +171,7 @@ export default function MealPlanner() {
 
         {error && (
           <Typography variant="caption" color="error" sx={{ display: "block", mb: 1.5 }}>
-            {error}
+            {t(error === "load" ? "meals.loadError" : "meals.saveError")}
           </Typography>
         )}
 
@@ -211,7 +184,7 @@ export default function MealPlanner() {
                   color="text.secondary"
                   sx={{ display: "block", lineHeight: 1, mb: 0.75, letterSpacing: 1.2 }}
                 >
-                  {w === 0 ? "This week" : "Next week"}
+                  {w === 0 ? t("meals.thisWeek") : t("meals.nextWeek")}
                 </Typography>
                 <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
                   {!weeks
@@ -273,7 +246,7 @@ export default function MealPlanner() {
                               <Typography
                                 sx={{ mt: -0.75, textAlign: "center", fontSize: 10, fontWeight: 700, color: accent, letterSpacing: 0.8 }}
                               >
-                                TODAY
+                                {t("meals.today")}
                               </Typography>
                             )}
 
@@ -284,7 +257,7 @@ export default function MealPlanner() {
                                   multiline
                                   maxRows={3}
                                   value={draft}
-                                  placeholder="Dinner…"
+                                  placeholder={t("meals.placeholder")}
                                   onChange={(e) => setDraft(e.target.value)}
                                   onKeyDown={onKeyDown(day.date)}
                                   onFocus={() => (skipBlur.current = false)}
@@ -295,11 +268,11 @@ export default function MealPlanner() {
                                   inputProps={{ style: { textAlign: "center" } }}
                                   sx={{ flex: 1, fontSize: 13, lineHeight: 1.35, p: 0 }}
                                 />
-                                <Tooltip title="Surprise me">
+                                <Tooltip title={t("meals.surprise")}>
                                   <IconButton
                                     onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => randomize(day.date)}
-                                    aria-label="Random meal"
+                                    aria-label={t("meals.random")}
                                     sx={{
                                       alignSelf: "center",
                                       width: 36,

@@ -21,39 +21,44 @@ import NetworkOverview from "./components/NetworkOverview";
 import HeaderClock from "./components/HeaderClock";
 import UtilityUsage from "./components/UtilityUsage";
 import CarStatus from "./components/CarStatus";
+import LanguageSwitcher from "./components/LanguageSwitcher";
+import { translator } from "../lib/i18n";
+import { getLang } from "../lib/i18n/server";
 
-const cameraZones = [
-  { label: "Hallway", active: false },
-  { label: "Kitchen", active: false },
-  { label: "Living room", active: true },
-  { label: "Office", active: false },
-  { label: "Bedroom", active: false },
-  { label: "Balcony", active: false },
-];
+export default async function Home() {
+  const t = translator(await getLang());
 
-const rooms = [
-  { name: "Hallway", temp: "24", status: "OK", color: "success" },
-  { name: "Kitchen", temp: "24", status: "Idle", color: "success" },
-  { name: "Living room", temp: "24", status: "Cool", color: "success" },
-  { name: "Office", temp: "24", status: "Idle", color: "success" },
-  { name: "Bedroom", temp: "24", status: "OK", color: "success" },
-];
+  const cameraZones = [
+    { label: t("room.hallway"), active: false },
+    { label: t("room.kitchen"), active: false },
+    { label: t("room.livingRoom"), active: true },
+    { label: t("room.office"), active: false },
+    { label: t("room.bedroom"), active: false },
+    { label: t("room.balcony"), active: false },
+  ];
 
-const shortcuts = [
-  { label: "Good morning", icon: LightModeIcon },
-  { label: "Leaving home", icon: TimeToLeaveIcon },
-  { label: "Arriving home", icon: MeetingRoomIcon },
-  { label: "Dinner", icon: RamenDiningIcon },
-  { label: "Going to sleep", icon: ModeNightIcon },
-];
+  const rooms = [
+    { name: t("room.hallway"), temp: "24", status: t("room.status.ok"), color: "success" },
+    { name: t("room.kitchen"), temp: "24", status: t("room.status.idle"), color: "success" },
+    { name: t("room.livingRoom"), temp: "24", status: t("room.status.cool"), color: "success" },
+    { name: t("room.office"), temp: "24", status: t("room.status.idle"), color: "success" },
+    { name: t("room.bedroom"), temp: "24", status: t("room.status.ok"), color: "success" },
+  ];
 
-const networkAndEnergyItems = [
-  { title: "Lights", subtitle: "All lights are off", icon: LightbulbIcon, color: "success" },
-  { title: "AC", subtitle: "AC is on", icon: ThermostatIcon, color: "primary" },
-  { title: "Wi-Fi", subtitle: "Wi-Fi is online", icon: WifiIcon, color: "success" },
-];
+  const shortcuts = [
+    { label: t("shortcuts.goodMorning"), icon: LightModeIcon },
+    { label: t("shortcuts.leaving"), icon: TimeToLeaveIcon },
+    { label: t("shortcuts.arriving"), icon: MeetingRoomIcon },
+    { label: t("shortcuts.dinner"), icon: RamenDiningIcon },
+    { label: t("shortcuts.sleep"), icon: ModeNightIcon },
+  ];
 
-export default function Home() {
+  const networkAndEnergyItems = [
+    { title: t("home.lights"), subtitle: t("home.lightsOff"), icon: LightbulbIcon, color: "success" },
+    { title: t("home.ac"), subtitle: t("home.acOn"), icon: ThermostatIcon, color: "primary" },
+    { title: t("home.wifi"), subtitle: t("home.wifiOnline"), icon: WifiIcon, color: "success" },
+  ];
+
   return (
     <Box
       sx={{
@@ -76,11 +81,11 @@ export default function Home() {
       >
         <Box>
           <Typography variant="overline" color="secondary" sx={{ letterSpacing: 2 }}>
-            HOUSEHOLD COMMAND CENTER
+            {t("header.overline")}
           </Typography>
 
           <Typography variant="h4" sx={{ mt: 1, fontWeight: 700 }}>
-            Smart home summary
+            {t("header.title")}
           </Typography>
         </Box>
         <Box>
@@ -92,6 +97,9 @@ export default function Home() {
 
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: { xs: "center", md: "flex-end" } }}>
           <HeaderClock />
+          <Box sx={{ mt: 1 }}>
+            <LanguageSwitcher />
+          </Box>
         </Box>
       </Box>
 
@@ -145,9 +153,9 @@ export default function Home() {
           >
             <EnvironmentOverview rooms={rooms} />
 
-            <Shortcuts shortcuts={shortcuts} />
+            <Shortcuts shortcuts={shortcuts} overline={t("shortcuts.overline")} title={t("shortcuts.title")} />
 
-            <NetworkAndEnergy items={networkAndEnergyItems} />
+            <NetworkAndEnergy items={networkAndEnergyItems} overline={t("home.overline")} title={t("home.title")} />
           </Box>
 
           {/* AVTO */}

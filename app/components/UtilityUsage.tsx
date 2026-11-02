@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Box, Card, CardContent, Chip, LinearProgress, Typography } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
+import { useI18n } from "../i18n";
 
 // ZAČASNO: izmišljeni podatki, dokler ni pravega vira (števec / API distributerja).
 // Poraba se računa iz dnevnega povprečja, da je skladna s trenutnim dnem v obdobju.
@@ -28,10 +29,11 @@ function billingPeriod(now: Date) {
   return { start, end, totalDays, elapsedDays };
 }
 
-const fmtDate = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-const fmtNum = (n: number, decimals: number) =>
-  n.toLocaleString("sl-SI", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-const fmtEur = (n: number) => n.toLocaleString("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const fmtDate = (d: Date, locale: string) => d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+const fmtNum = (n: number, decimals: number, locale: string) =>
+  n.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+const fmtEur = (n: number, locale: string) =>
+  n.toLocaleString(locale, { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 
 function Meter({
   icon,
@@ -48,6 +50,7 @@ function Meter({
   elapsedDays: number;
   totalDays: number;
 }) {
+  const { t, locale } = useI18n();
   const used = meter.perDay * elapsedDays;
   const projected = meter.perDay * totalDays;
   const vsLast = Math.round(((projected - meter.lastPeriod) / meter.lastPeriod) * 100);
@@ -72,13 +75,13 @@ function Meter({
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
-          ≈ {fmtEur(used * meter.pricePerUnit)}
+          ≈ {fmtEur(used * meter.pricePerUnit, locale)}
         </Typography>
       </Box>
 
       <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          {fmtNum(used, meter.decimals)}
+          {fmtNum(used, meter.decimals, locale)}
         </Typography>
         <Typography color="text.secondary">{meter.unit}</Typography>
       </Box>
@@ -96,11 +99,11 @@ function Meter({
       />
       <Box sx={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", columnGap: 1, mt: 0.75 }}>
         <Typography variant="caption" color="text.secondary">
-          → {fmtNum(projected, meter.decimals)} {meter.unit}
+          → {fmtNum(projected, meter.decimals, locale)} {meter.unit}
         </Typography>
         <Typography variant="caption" sx={{ color: vsLast > 0 ? "#f87171" : "#22c55e", fontWeight: 600 }}>
           {vsLast > 0 ? "+" : ""}
-          {vsLast} % vs last
+          {t("billing.vsLast", { n: vsLast })}
         </Typography>
       </Box>
     </Box>
@@ -109,6 +112,7 @@ function Meter({
 
 export default function UtilityUsage() {
   const [now, setNow] = useState<Date | null>(null);
+  const { t, locale } = useI18n();
   useEffect(() => setNow(new Date()), []);
 
   const period = now ? billingPeriod(now) : null;
@@ -117,16 +121,16 @@ export default function UtilityUsage() {
     <Card>
       <CardContent>
         <Typography variant="subtitle2" color="secondary">
-          Billing period
+          {t("billing.overline")}
         </Typography>
         <Typography variant="h6" sx={{ mt: 1, fontWeight: 700, whiteSpace: "nowrap" }}>
-          {period ? `${fmtDate(period.start)} – ${fmtDate(period.end)}` : "\u00a0"}
+          {period ? `${fmtDate(period.start, locale)} – ${fmtDate(period.end, locale)}` : "\u00a0"}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
           <Typography variant="caption" color="text.secondary">
-            {period ? `Day ${period.elapsedDays} of ${period.totalDays}` : "\u00a0"}
+            {period ? t("billing.day", { n: period.elapsedDays, total: period.totalDays }) : "\u00a0"}
           </Typography>
-          <Chip label="Demo" size="small" variant="outlined" sx={{ height: 20, fontSize: 11, color: "text.secondary" }} />
+          <Chip label={t("common.demo")} size="small" variant="outlined" sx={{ height: 20, fontSize: 11, color: "text.secondary" }} />
         </Box>
 
         {period && (
@@ -134,7 +138,7 @@ export default function UtilityUsage() {
             <Meter
               icon={<BoltIcon sx={{ fontSize: 18 }} />}
               color="#facc15"
-              label="Electricity"
+              label={t("billing.electricity")}
               meter={DEMO.electricity}
               elapsedDays={period.elapsedDays}
               totalDays={period.totalDays}
@@ -142,7 +146,7 @@ export default function UtilityUsage() {
             <Meter
               icon={<WaterDropIcon sx={{ fontSize: 18 }} />}
               color="#38bdf8"
-              label="Water"
+              label={t("billing.water")}
               meter={DEMO.water}
               elapsedDays={period.elapsedDays}
               totalDays={period.totalDays}

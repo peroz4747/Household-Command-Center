@@ -20,6 +20,7 @@ import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIosNewIcon from "@mui/icons-material/ArrowBackIosNew";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
+import { useI18n } from "../i18n";
 
 interface CalendarEvent {
   id?: string;
@@ -53,6 +54,14 @@ const isOverdueTask = (task: TaskItem) => {
 
 export default function CalendarTimeline() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const { t, locale } = useI18n();
+  // Shranjeni zapis za opravila brez roka (v data/tasks.json) ostane angleški.
+  const NO_DUE = "No due date";
+  const showDue = (due: string) => t("calendar.due", { date: !due || due === NO_DUE ? t("calendar.noDue") : formatDueDate(due) });
+  // Imena dni v tednu (od ponedeljka) v izbranem jeziku; 2024-01-01 je bil ponedeljek.
+  const weekdayNames = Array.from({ length: 7 }, (_, i) =>
+    new Date(2024, 0, 1 + i).toLocaleDateString(locale, { weekday: "short" }).replace(/\.$/, ""),
+  );
   const [tasks, setTasks] = useState<TaskItem[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -81,6 +90,11 @@ export default function CalendarTimeline() {
 
   const formatDisplayDate = (date: Date) =>
     `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
+
+  const formatDueDate = (due: string) => {
+    const m = due.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? formatDisplayDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : due;
+  };
 
   const formatDisplayTimeFromString = (s: string) => {
     const d = new Date(s);
@@ -118,18 +132,18 @@ export default function CalendarTimeline() {
         if (!mounted) return;
 
         if (calendarData.error) {
-          setError(calendarData.error);
+          setError(t("calendar.loadError"));
         } else {
           setEvents(calendarData.events ?? []);
         }
 
         if (tasksData.error) {
-          setError(tasksData.error);
+          setError(t("calendar.loadError"));
         } else {
           setTasks(tasksData.items ?? []);
         }
       })
-      .catch(() => setError("Unable to load calendar and task data."))
+      .catch(() => setError(t("calendar.loadError")))
       .finally(() => {
         if (mounted) setLoading(false);
       });
@@ -219,7 +233,7 @@ export default function CalendarTimeline() {
       const created = await response.json();
 
       if (!response.ok) {
-        throw new Error(created.error || "Unable to save Google Calendar event");
+        throw new Error(t("calendar.saveEventError"));
       }
 
       setEvents((current) => [created, ...current]);
@@ -233,7 +247,7 @@ export default function CalendarTimeline() {
 
   const handleDeleteEvent = async (ev: CalendarEvent) => {
     if (!ev.id) {
-      setError("Cannot delete event without Google Calendar id.");
+      setError(t("calendar.noEventId"));
       return;
     }
 
@@ -247,7 +261,7 @@ export default function CalendarTimeline() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Unable to delete Google Calendar event");
+        throw new Error(t("calendar.deleteEventError"));
       }
 
       setEvents((current) => current.filter((item) => item.id !== ev.id));
@@ -263,7 +277,7 @@ export default function CalendarTimeline() {
 
     const nextTask = {
       title: newTaskTitle.trim(),
-      due: newTaskDue || "No due date",
+      due: newTaskDue || NO_DUE,
       status: "pending",
     };
 
@@ -277,7 +291,7 @@ export default function CalendarTimeline() {
       const created = await response.json();
 
       if (!response.ok) {
-        throw new Error(created.error || "Unable to save task");
+        throw new Error(t("calendar.saveTaskError"));
       }
 
       setTasks((current) => [created, ...current]);
@@ -298,7 +312,7 @@ export default function CalendarTimeline() {
 
       setTasks((current) => current.filter((task) => task.id !== id));
     } catch {
-      setError("Unable to delete task.");
+      setError(t("calendar.deleteTaskError"));
     }
   };
 
@@ -316,7 +330,7 @@ export default function CalendarTimeline() {
       const updated = await response.json();
 
       if (!response.ok) {
-        throw new Error(updated.error || "Unable to update task");
+        throw new Error(t("calendar.updateTaskError"));
       }
 
       setTasks((current) =>
@@ -341,10 +355,10 @@ export default function CalendarTimeline() {
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Box>
             <Typography variant="subtitle2" color="secondary">
-              Today&apos;s focus
+              {t("calendar.overline")}
             </Typography>
             <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
-              Task timeline
+              {t("calendar.title")}
             </Typography>
           </Box>
 
@@ -364,7 +378,7 @@ export default function CalendarTimeline() {
                 </IconButton>
 
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  {currentMonth.toLocaleString(undefined, {
+                  {currentMonth.toLocaleString(locale, {
                     month: "long",
                     year: "numeric",
                   })}
@@ -380,13 +394,13 @@ export default function CalendarTimeline() {
                 size="small"
                 onClick={() => openAddForDate(selectedDate)}
               >
-                Add
+                {t("common.add")}
               </Button>
             </Box>
 
             <Box>
               <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                {weekdayNames.map((day) => (
                   <Typography
                     key={day}
                     variant="caption"
@@ -450,7 +464,7 @@ export default function CalendarTimeline() {
 
               <Box sx={{ mt: 2 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  {`Events for ${formatDisplayDate(selectedDate)}`}
+                  {t("calendar.eventsFor", { date: formatDisplayDate(selectedDate) })}
                 </Typography>
 
                 <Box sx={{ display: "grid", gap: 1 }}>
@@ -490,7 +504,7 @@ export default function CalendarTimeline() {
                     ))
                   ) : (
                     <Typography color="text.secondary">
-                      No events for this date.
+                      {t("calendar.noEvents")}
                     </Typography>
                   )}
                 </Box>
@@ -498,11 +512,11 @@ export default function CalendarTimeline() {
             </Box>
 
             <Dialog open={addOpen} onClose={() => setAddOpen(false)}>
-              <DialogTitle>Add event</DialogTitle>
+              <DialogTitle>{t("calendar.addEvent")}</DialogTitle>
 
               <DialogContent sx={{ display: "grid", gap: 2, width: 360 }}>
                 <TextField
-                  label="Title"
+                  label={t("calendar.field.title")}
                   value={evTitle}
                   onChange={(e) => setEvTitle(e.target.value)}
                   size="small"
@@ -510,7 +524,7 @@ export default function CalendarTimeline() {
                 />
 
                 <TextField
-                  label="Date"
+                  label={t("calendar.field.date")}
                   type="date"
                   value={evDate}
                   onChange={(e) => setEvDate(e.target.value)}
@@ -521,7 +535,7 @@ export default function CalendarTimeline() {
 
                 <Box sx={{ display: "flex", gap: 1 }}>
                   <TextField
-                    label="Start"
+                    label={t("calendar.field.start")}
                     type="time"
                     value={evStart}
                     onChange={(e) => setEvStart(e.target.value)}
@@ -530,7 +544,7 @@ export default function CalendarTimeline() {
                   />
 
                   <TextField
-                    label="End"
+                    label={t("calendar.field.end")}
                     type="time"
                     value={evEnd}
                     onChange={(e) => setEvEnd(e.target.value)}
@@ -540,7 +554,7 @@ export default function CalendarTimeline() {
                 </Box>
 
                 <TextField
-                  label="Description"
+                  label={t("calendar.field.description")}
                   value={evDesc}
                   onChange={(e) => setEvDesc(e.target.value)}
                   size="small"
@@ -551,9 +565,9 @@ export default function CalendarTimeline() {
               </DialogContent>
 
               <DialogActions>
-                <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+                <Button onClick={() => setAddOpen(false)}>{t("common.cancel")}</Button>
                 <Button onClick={handleSaveEvent} variant="contained">
-                  Save
+                  {t("common.save")}
                 </Button>
               </DialogActions>
             </Dialog>
@@ -562,11 +576,11 @@ export default function CalendarTimeline() {
 
         <Box component="form" onSubmit={handleAddTask} sx={{ display: "grid", gap: 2, mt: 4 }}>
           <Typography variant="subtitle2" color="secondary">
-            Add a task
+            {t("calendar.addTaskSection")}
           </Typography>
 
           <TextField
-            label="Task"
+            label={t("calendar.field.task")}
             value={newTaskTitle}
             onChange={(event) => setNewTaskTitle(event.target.value)}
             size="small"
@@ -574,7 +588,7 @@ export default function CalendarTimeline() {
           />
 
           <TextField
-            label="Due date"
+            label={t("calendar.field.due")}
             type="date"
             value={newTaskDue}
             onChange={(event) => setNewTaskDue(event.target.value)}
@@ -584,7 +598,7 @@ export default function CalendarTimeline() {
           />
 
           <Button type="submit" variant="contained" disabled={!newTaskTitle.trim()}>
-            Add task
+            {t("calendar.addTask")}
           </Button>
         </Box>
 
@@ -592,7 +606,7 @@ export default function CalendarTimeline() {
           {overdueTasks.length > 0 ? (
             <Box sx={{ display: "grid", gap: 1.5, mb: 2 }}>
               <Typography variant="subtitle2" color="error">
-                Overdue tasks
+                {t("calendar.overdue")}
               </Typography>
 
               {overdueTasks.map((task) => (
@@ -609,7 +623,7 @@ export default function CalendarTimeline() {
                     <Box>
                       <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Due: {task.due}
+                        {showDue(task.due)}
                       </Typography>
                     </Box>
 
@@ -631,7 +645,7 @@ export default function CalendarTimeline() {
           {pendingTasks.length > 0 ? (
             <Box sx={{ display: "grid", gap: 1.5, mb: 2 }}>
               <Typography variant="subtitle2" color="secondary">
-                Pending tasks
+                {t("calendar.pending")}
               </Typography>
 
               {pendingTasks.map((task) => (
@@ -647,7 +661,7 @@ export default function CalendarTimeline() {
                     <Box>
                       <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Due: {task.due}
+                        {showDue(task.due)}
                       </Typography>
                     </Box>
 
@@ -669,7 +683,7 @@ export default function CalendarTimeline() {
           {completedTasks.length > 0 ? (
             <Box sx={{ display: "grid", gap: 1.5 }}>
               <Typography variant="subtitle2" color="success.main">
-                Completed tasks
+                {t("calendar.completed")}
               </Typography>
 
               {completedTasks.map((task) => (
@@ -685,7 +699,7 @@ export default function CalendarTimeline() {
                     <Box>
                       <Typography sx={{ fontWeight: 700 }}>{task.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Due: {task.due}
+                        {showDue(task.due)}
                       </Typography>
                     </Box>
 
@@ -700,7 +714,7 @@ export default function CalendarTimeline() {
 
           {tasks.length === 0 ? (
             <Typography color="text.secondary">
-              Create a new task to keep the household organized.
+              {t("calendar.empty")}
             </Typography>
           ) : null}
         </Box>
@@ -709,11 +723,11 @@ export default function CalendarTimeline() {
       <Box sx={{ bgcolor: "rgba(255,255,255,0.03)", p: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Typography variant="body2" color="text.secondary">
-            Google Calendar sync is enabled.
+            {t("calendar.sync")}
           </Typography>
 
           <Button href="/api/calendar" size="small" sx={{ textTransform: "none" }}>
-            Refresh
+            {t("common.refresh")}
           </Button>
         </Box>
       </Box>

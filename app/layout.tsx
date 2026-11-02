@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import "./globals.css";
 import Providers from "./providers";
+import { getLang } from "../lib/i18n/server";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,16 +20,17 @@ export const metadata: Metadata = {
   description: "A smart household dashboard built with Next.js and MUI.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const lang = await getLang();
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang={lang} className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <AppRouterCacheProvider>
-          <Providers>{children}</Providers>
+          <Providers lang={lang}>{children}</Providers>
         </AppRouterCacheProvider>
       </body>
     </html>

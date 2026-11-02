@@ -26,13 +26,9 @@ import {
   Typography,
 } from "@mui/material";
 import type { GuestKind, NetworkItem, NetworkOverview as Overview } from "../../lib/network";
+import { useI18n } from "../i18n";
 
-const kindLabel: Record<GuestKind, string> = {
-  node: "Host",
-  lxc: "LXC",
-  qemu: "VM",
-  docker: "Docker",
-};
+const KINDS: GuestKind[] = ["node", "lxc", "qemu", "docker"];
 
 const kindColor: Record<GuestKind, "primary" | "secondary" | "info" | "warning"> = {
   node: "warning",
@@ -87,6 +83,8 @@ export default function NetworkOverview() {
   const [data, setData] = useState<Overview | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [filter, setFilter] = useState<GuestKind | "all">("all");
+  const { t, locale } = useI18n();
+  const kindLabel = (k: GuestKind) => t(`network.kind.${k}`);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,11 +94,11 @@ export default function NetworkOverview() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
     } catch (e) {
-      setFetchError(`Unable to load network overview (${(e as Error).message}).`);
+      setFetchError(t("network.loadError", { error: (e as Error).message }));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleOpen = () => {
     setOpen(true);
@@ -120,29 +118,32 @@ export default function NetworkOverview() {
   return (
     <>
       <Button variant="outlined" size="small" startIcon={<HubIcon fontSize="small" />} onClick={handleOpen}>
-        Network
+        {t("network.button")}
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
           <Box>
-            Network overview
+            {t("network.title")}
             {data && (
               <Typography variant="body2" color="text.secondary">
-                {running} of {data.items.length} running · updated{" "}
-                {new Date(data.generatedAt).toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {t("network.summary", {
+                  running,
+                  total: data.items.length,
+                  time: new Date(data.generatedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+                })}
               </Typography>
             )}
           </Box>
           <Box>
-            <Tooltip title="Refresh">
+            <Tooltip title={t("common.refresh")}>
               <span>
-                <IconButton size="small" onClick={() => void load()} disabled={loading} aria-label="Refresh">
+                <IconButton size="small" onClick={() => void load()} disabled={loading} aria-label={t("common.refresh")}>
                   <RefreshIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
-            <IconButton size="small" onClick={() => setOpen(false)} aria-label="Close">
+            <IconButton size="small" onClick={() => setOpen(false)} aria-label={t("common.close")}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
@@ -159,16 +160,16 @@ export default function NetworkOverview() {
           {data && (
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap", rowGap: 1 }}>
               <Chip
-                label={`All (${data.items.length})`}
+                label={t("network.all", { n: data.items.length })}
                 onClick={() => setFilter("all")}
                 variant={filter === "all" ? "filled" : "outlined"}
               />
-              {(Object.keys(kindLabel) as GuestKind[])
+              {KINDS
                 .filter((k) => counts[k] > 0)
                 .map((k) => (
                   <Chip
                     key={k}
-                    label={`${kindLabel[k]} (${counts[k]})`}
+                    label={`${kindLabel(k)} (${counts[k]})`}
                     color={kindColor[k]}
                     onClick={() => setFilter(k)}
                     variant={filter === k ? "filled" : "outlined"}
@@ -180,7 +181,7 @@ export default function NetworkOverview() {
           {webItems.length > 0 && (
             <Box sx={{ mb: 2 }}>
               <Typography variant="overline" color="text.secondary">
-                Web interfaces
+                {t("network.webInterfaces")}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
                 {webItems.map((item) => (
@@ -212,15 +213,15 @@ export default function NetworkOverview() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>IP address</TableCell>
-                      <TableCell>Ports</TableCell>
-                      <TableCell>Uptime</TableCell>
-                      <TableCell>CPU</TableCell>
-                      <TableCell>Memory</TableCell>
-                      <TableCell align="center">Web UI</TableCell>
+                      <TableCell>{t("network.col.name")}</TableCell>
+                      <TableCell>{t("network.col.type")}</TableCell>
+                      <TableCell>{t("network.col.status")}</TableCell>
+                      <TableCell>{t("network.col.ip")}</TableCell>
+                      <TableCell>{t("network.col.ports")}</TableCell>
+                      <TableCell>{t("network.col.uptime")}</TableCell>
+                      <TableCell>{t("network.col.cpu")}</TableCell>
+                      <TableCell>{t("network.col.memory")}</TableCell>
+                      <TableCell align="center">{t("network.col.web")}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -233,7 +234,7 @@ export default function NetworkOverview() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Chip size="small" label={kindLabel[item.kind]} color={kindColor[item.kind]} variant="outlined" />
+                          <Chip size="small" label={kindLabel(item.kind)} color={kindColor[item.kind]} variant="outlined" />
                         </TableCell>
                         <TableCell>
                           <Chip size="small" label={item.status} color={statusColor(item.status)} />
@@ -256,7 +257,7 @@ export default function NetworkOverview() {
                                 href={item.webUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                aria-label={`Open ${shortName(item)} web interface`}
+                                aria-label={t("network.open", { name: shortName(item) })}
                               >
                                 <OpenInNewIcon fontSize="small" />
                               </IconButton>
@@ -270,7 +271,7 @@ export default function NetworkOverview() {
                     {!visible.length && (
                       <TableRow>
                         <TableCell colSpan={9} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                          No services found.
+                          {t("network.empty")}
                         </TableCell>
                       </TableRow>
                     )}

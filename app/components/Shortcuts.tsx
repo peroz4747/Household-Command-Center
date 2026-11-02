@@ -5,17 +5,25 @@ type Shortcut = {
   icon: React.ElementType;
 };
 
-export default function Shortcuts({ shortcuts }: { shortcuts: Shortcut[] }) {
+export default function Shortcuts({
+  shortcuts,
+  overline,
+  title,
+}: {
+  shortcuts: Shortcut[];
+  overline: string;
+  title: string;
+}) {
 
     return (
         <Card sx={{ minHeight: 340 }}>
                 <CardContent>
                     <Typography variant="subtitle2" color="secondary">
-                    Shortcuts
+                    {overline}
                     </Typography>
 
                     <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
-                    Quick actions
+                    {title}
                     </Typography>
 
                     <Box

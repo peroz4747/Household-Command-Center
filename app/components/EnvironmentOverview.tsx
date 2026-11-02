@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Box, Chip, Card, CardContent, Typography } from "@mui/material";
+import { useI18n } from "../i18n";
 
 type Room = {
   name: string;
@@ -14,17 +15,18 @@ export default function EnvironmentOverview({ rooms }: { rooms: Room[] }) {
   const [temperature, setTemperature] = useState(20);
   const [humidity, setHumidity] = useState(50);
   const [co2, setCo2] = useState(400);
+  const { t } = useI18n();
 
   return (
     <Card sx={{ minHeight: 205, overflow: "hidden" }}>
             <Card sx={{ minHeight: 340 }}>
               <CardContent>
                 <Typography variant="subtitle2" color="secondary">
-                  Rooms
+                  {t("rooms.overline")}
                 </Typography>
 
                 <Typography variant="h6" sx={{ mt: 1, mb: 2, fontWeight: 700 }}>
-                  Environment overview
+                  {t("rooms.title")}
                 </Typography>
 
                 <Box sx={{ display: "grid", gap: 1.5 }}>
