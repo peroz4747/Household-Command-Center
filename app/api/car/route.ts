@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
-import storage from "../../../lib/storage";
+import { getCar, refreshCar, setTyres } from "../../../lib/car";
 
-// Shranjeno stanje avta (zaenkrat samo pnevmatike, ostalo so demo podatki v komponenti).
-export type TyreSeason = "summer" | "winter";
-export type CarState = { tyres: { mounted: TyreSeason; changedOn: string | null } };
-
-const DEFAULT_STATE: CarState = { tyres: { mounted: "summer", changedOn: null } };
-
-async function readState(): Promise<CarState> {
-  const raw = await storage.readItems("car");
-  return raw && !Array.isArray(raw) && raw.tyres ? (raw as CarState) : DEFAULT_STATE;
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return NextResponse.json(await readState());
+    return NextResponse.json(await getCar());
   } catch {
     return NextResponse.json({ error: "Unable to read car state" }, { status: 500 });
+  }
+}
+
+// Ročno osveževanje iz Škoda API-ja (gumb "Refresh" na kartici).
+export async function POST() {
+  try {
+    return NextResponse.json(await refreshCar());
+  } catch {
+    return NextResponse.json({ error: "Unable to refresh car data" }, { status: 500 });
   }
 }
 
@@ -31,9 +32,7 @@ export async function PUT(req: Request) {
     if (changedOn !== null && !/^\d{4}-\d{2}-\d{2}$/.test(changedOn)) {
       return NextResponse.json({ error: "tyres.changedOn must be YYYY-MM-DD or null" }, { status: 400 });
     }
-    const state: CarState = { ...(await readState()), tyres: { mounted, changedOn } };
-    await storage.writeItems("car", state);
-    return NextResponse.json(state);
+    return NextResponse.json({ tyres: await setTyres({ mounted, changedOn }) });
   } catch {
     return NextResponse.json({ error: "Unable to save car state" }, { status: 500 });
   }
