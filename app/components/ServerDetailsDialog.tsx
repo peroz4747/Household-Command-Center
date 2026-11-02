@@ -316,6 +316,18 @@ function HealthCheckPanel() {
                     {c.detail}
                   </Typography>
                 </Box>
+                {c.action && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    href={c.action.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ ml: "auto", flexShrink: 0, alignSelf: "center" }}
+                  >
+                    {c.action.label}
+                  </Button>
+                )}
               </Box>
             ))}
           </Stack>

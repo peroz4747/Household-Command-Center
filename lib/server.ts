@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { PVE_NODE, pveConfigured, pveGet } from "./proxmox";
+import { webLinks } from "./webLinks";
 
 /* ---------------- Tipi ---------------- */
 
@@ -42,7 +43,12 @@ export type ServerDetails = {
 };
 
 export type CheckStatus = "ok" | "info" | "warn" | "fail" | "skip";
-export type HealthCheck = { label: string; status: CheckStatus; detail: string };
+export type HealthCheck = {
+  label: string;
+  status: CheckStatus;
+  detail: string;
+  action?: { label: string; href: string }; // povezava za ukrepanje (odpre se v novem zavihku)
+};
 export type HealthReport = { overall: CheckStatus; checks: HealthCheck[]; generatedAt: string };
 
 /* ---------------- Proxmox odgovori ---------------- */
@@ -85,7 +91,13 @@ const pct = (used: number, total: number) => (total > 0 ? (used / total) * 100 :
 const HOST_STATUS_FILE = process.env.HOST_STATUS_FILE ?? "/host-status/status.json";
 const HOST_STATUS_MAX_AGE_S = 180;
 
-type HostStatus = { generatedAt: number; cpuTemps: CpuTemp[]; failedUnits: string[] };
+type HostStatus = {
+  generatedAt: number;
+  cpuTemps: CpuTemp[];
+  failedUnits: string[];
+  // Iz /var/lib/pve-manager/pkgupdates; null/undefined = ni na voljo (starejša host skripta).
+  pkgUpdates?: string[] | null;
+};
 
 async function readHostStatus(): Promise<HostStatus | null> {
   try {
@@ -95,6 +107,19 @@ async function readHostStatus(): Promise<HostStatus | null> {
   } catch {
     return null;
   }
+}
+
+/** Neuspeli taski, za katerimi ni kasnejšega uspešnega taska istega tipa in cilja (npr. nočni aptupdate po popravku). */
+function unresolvedFailures(tasks: PveTask[]): PveTask[] {
+  const lastOk = new Map<string, number>();
+  for (const t of tasks) {
+    if (t.status !== "OK") continue;
+    const key = `${t.type}:${t.id}`;
+    lastOk.set(key, Math.max(lastOk.get(key) ?? 0, t.starttime));
+  }
+  return tasks.filter(
+    (t) => t.status && t.status !== "OK" && (lastOk.get(`${t.type}:${t.id}`) ?? 0) <= t.starttime,
+  );
 }
 
 function smartTemp(smart: PveSmart): number | undefined {
@@ -249,12 +274,16 @@ export async function runHealthCheck(): Promise<HealthReport> {
   checks.push({ label: "Proxmox API", status: "ok", detail: `${d.node} online, ${d.pveVersion}` });
 
   const since = Math.floor(Date.now() / 1000) - 24 * 3600;
-  const [resources, failedTasks, updates, host] = await Promise.all([
+  const [resources, failedTasks, host] = await Promise.all([
     pveGet<PveResource[]>("/cluster/resources?type=vm").catch(() => null),
-    pveGet<PveTask[]>(`/nodes/${PVE_NODE}/tasks?errors=1&since=${since}&limit=100`).catch(() => null),
-    pveGet<unknown[]>(`/nodes/${PVE_NODE}/apt/update`).catch(() => null),
+    pveGet<PveTask[]>(`/nodes/${PVE_NODE}/tasks?since=${since}&limit=500`)
+      .then(unresolvedFailures)
+      .catch(() => null),
     readHostStatus(),
   ]);
+  // /nodes/{node}/apt/update zahteva Sys.Modify, žeton pa je namenoma read-only (PVEAuditor),
+  // zato seznam posodobitev pride s hosta (hcc-host-status).
+  const updates = host?.pkgUpdates ?? null;
 
   // CPU in RAM
   checks.push({
@@ -349,7 +378,13 @@ export async function runHealthCheck(): Promise<HealthReport> {
     checks.push({
       label: "Package updates",
       status: updates.length ? "info" : "ok",
-      detail: updates.length ? `${updates.length} packages can be upgraded` : "Up to date",
+      detail: updates.length
+        ? `${updates.length} packages can be upgraded: ${updates.slice(0, 8).join(", ")}${updates.length > 8 ? ", …" : ""}`
+        : "Up to date",
+      // Dashboard je read-only: nadgradnjo se zažene v Proxmox UI (Updates → Upgrade odpre konzolo).
+      action: updates.length
+        ? { label: "Update", href: `${webLinks[PVE_NODE] ?? "https://proxmox.home/"}#v1:0:=node%2F${PVE_NODE}:4:=updates` }
+        : undefined,
     });
   } else {
     checks.push({ label: "Package updates", status: "skip", detail: "Unable to read update list" });
