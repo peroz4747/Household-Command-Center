@@ -27,10 +27,6 @@ const fmtNum = (n: number, decimals: number, locale: string) =>
   n.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 const fmtEur = (n: number, locale: string) =>
   n.toLocaleString(locale, { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-const parseDay = (s: string) => {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
-};
 
 function demoValues(meter: (typeof DEMO)["water"], elapsedDays: number, totalDays: number): MeterValues {
   const used = meter.perDay * elapsedDays;
@@ -166,20 +162,6 @@ export default function UtilityUsage() {
         lastPeriod: e?.lastPeriodKwh ?? null,
         cost: e?.costEur ?? null,
       };
-      if (e?.byTariff.VT !== undefined && e?.byTariff.MT !== undefined) {
-        elNotes.push({
-          text: t("billing.tariffs", { vt: fmtNum(e.byTariff.VT, 0, locale), mt: fmtNum(e.byTariff.MT, 0, locale) }),
-        });
-      }
-      if (e?.networkEur != null) {
-        elNotes.push({
-          text: `${t("billing.network", { eur: e.networkEur.toLocaleString(locale, { style: "currency", currency: "EUR" }) })}${
-            e.networkPowerIncluded ? "" : ` ${t("billing.noPower")}`
-          }`,
-        });
-        if (e.supplyEur === null) elNotes.push({ text: t("billing.noSupply") });
-      }
-      if (e?.dataUntil) elNotes.push({ text: t("billing.dataUntil", { date: fmtDate(parseDay(e.dataUntil), locale) }) });
       if (electricity?.error) {
         const err = electricity.error;
         elNotes.push({
@@ -217,7 +199,7 @@ export default function UtilityUsage() {
               unit="kWh"
               decimals={0}
               values={elValues}
-              source={live ? "Moj Elektro" : t("common.demo")}
+              source={live ? `Moj Elektro${electricity?.distributor ? ` (${electricity.distributor})` : ""}` : t("common.demo")}
               notes={elNotes}
             />
             <Meter

@@ -47,6 +47,7 @@ export type ElectricityData = {
 
 export type ElectricityResponse = {
   source: "mojelektro" | "demo";
+  distributor?: string; // MOJELEKTRO_DISTRIBUTOR, npr. "Elektro Maribor" (le za prikaz)
   data: ElectricityData | null;
   error: { code: ElectricityErrorCode; detail?: string } | null;
 };
@@ -349,5 +350,10 @@ export async function getElectricity(): Promise<ElectricityResponse> {
     await inFlight;
     stored = await readStored();
   }
-  return { source: "mojelektro", data: stored.data ?? null, error: stored.error ?? null };
+  return {
+    source: "mojelektro",
+    ...(process.env.MOJELEKTRO_DISTRIBUTOR ? { distributor: process.env.MOJELEKTRO_DISTRIBUTOR } : {}),
+    data: stored.data ?? null,
+    error: stored.error ?? null,
+  };
 }
