@@ -19,6 +19,8 @@ import NetworkAndEnergy from "./components/NetworkAndEnergy";
 import NewsFeed from "./components/NewsFeed";
 import NetworkOverview from "./components/NetworkOverview";
 import HeaderClock from "./components/HeaderClock";
+import UtilityUsage from "./components/UtilityUsage";
+import CarStatus from "./components/CarStatus";
 
 const cameraZones = [
   { label: "Hallway", active: false },
@@ -123,7 +125,10 @@ export default function Home() {
 
             <Box sx={{ display: "grid", gap: 3 }}>
               <WeatherSummary />
-              <ClimateControl />
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 3 }}>
+                <ClimateControl />
+                <UtilityUsage />
+              </Box>
             </Box>
           </Box>
 
@@ -143,6 +148,11 @@ export default function Home() {
             <Shortcuts shortcuts={shortcuts} />
 
             <NetworkAndEnergy items={networkAndEnergyItems} />
+          </Box>
+
+          {/* AVTO */}
+          <Box sx={{ mt: 3 }}>
+            <CarStatus />
           </Box>
 
           {/* MEAL PLANNER */}
