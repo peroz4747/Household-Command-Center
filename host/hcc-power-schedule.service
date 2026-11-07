@@ -1,0 +1,6 @@
+[Unit]
+Description=Household Command Center: urnik izklopa strežnika
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hcc-power --schedule

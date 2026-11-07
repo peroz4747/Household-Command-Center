@@ -1,0 +1,9 @@
+[Unit]
+Description=Household Command Center: preverjanje urnika vsako minuto
+
+[Timer]
+OnCalendar=*-*-* *:*:05
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

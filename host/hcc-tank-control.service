@@ -1,0 +1,8 @@
+[Unit]
+Description=Household Command Center: zahteve dashboarda (ZFS tank, izklop strežnika)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hcc-tank-control
+ExecStart=/usr/local/bin/hcc-power
+TimeoutStartSec=900

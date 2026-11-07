@@ -29,6 +29,7 @@ import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import type { CarLive, CarResponse, Tyres, TyreSeason } from "../../lib/car";
 import type { MessageKey, Translate } from "../../lib/i18n";
+import FuelPrice from "./FuelPrice";
 import { useI18n } from "../i18n";
 
 // Ročni podatki: Škoda API jih ne ponuja (zavarovanje, registracija, vinjeta, servis).
@@ -150,7 +151,7 @@ function daysLabel(days: number, t: Translate) {
 
 function Stat({ icon, label, value, sub }: { icon: ReactNode; label: string; value: string; sub?: string }) {
   return (
-    <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: "rgba(148,163,184,0.06)" }}>
+    <Box sx={{ p: 1.5, borderRadius: "14px", bgcolor: "rgba(148,163,184,0.06)" }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: "text.secondary" }}>
         {icon}
         <Typography variant="caption">{label}</Typography>
@@ -264,7 +265,8 @@ export default function CarStatus() {
         : { ...DEMO, title: MANUAL.model };
   const { lat, lon } = d.location;
   const hasMap = lat !== null && lon !== null;
-  const bbox = hasMap ? [lon - 0.012, lat - 0.006, lon + 0.012, lat + 0.006].join(",") : "";
+  // Polovična širina/višina območja v stopinjah (manj = bližje).
+  const bbox = hasMap ? [lon - 0.003, lat - 0.0015, lon + 0.003, lat + 0.0015].join(",") : "";
   const mapUrl = hasMap
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`
     : "";
@@ -337,7 +339,7 @@ export default function CarStatus() {
                 position: "relative",
                 height: { xs: 180, md: "100%" },
                 minHeight: 180,
-                borderRadius: 3,
+                borderRadius: "14px",
                 overflow: "hidden",
                 border: "1px solid rgba(148,163,184,0.15)",
               }}
@@ -386,7 +388,7 @@ export default function CarStatus() {
 
           {/* Stanje in poraba */}
           <Box sx={{ display: "grid", gap: 1.25, alignContent: "start" }}>
-            <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: "rgba(148,163,184,0.06)" }}>
+            <Box sx={{ p: 1.5, borderRadius: "14px", bgcolor: "rgba(148,163,184,0.06)" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: "text.secondary" }}>
                 <LocalGasStationIcon sx={{ fontSize: 16 }} />
                 <Typography variant="caption">{t("car.fuel")}</Typography>
@@ -405,6 +407,7 @@ export default function CarStatus() {
                 color={d.fuelPercent === null ? "inherit" : d.fuelPercent < 15 ? "error" : d.fuelPercent < 30 ? "warning" : "secondary"}
                 sx={{ mt: 0.75, height: 6, borderRadius: 3, bgcolor: "rgba(148,163,184,0.15)" }}
               />
+              <FuelPrice />
             </Box>
             <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
               {d.consumption ? (
@@ -453,7 +456,7 @@ export default function CarStatus() {
                 sx={{
                   mt: 1,
                   p: 1.25,
-                  borderRadius: 3,
+                  borderRadius: "14px",
                   bgcolor: "rgba(148,163,184,0.06)",
                   border: "1px solid",
                   borderColor: change.kind === "by" && changeDays < 14 ? "rgba(248,113,113,0.5)" : "rgba(148,163,184,0.12)",

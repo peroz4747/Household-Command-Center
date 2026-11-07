@@ -1,0 +1,149 @@
+#!/usr/bin/python3
+"""Izklop/ponovni zagon strežnika in urnik delovanja za Household Command Center (CT 101).
+
+Brez argumentov: obdela zahtevo iz /var/lib/hcc-control/request.json, če je action "shutdown" ali "reboot"
+  (za "export"/"import" skrbi hcc-tank-control).
+--schedule: zažene ga hcc-power-schedule.timer vsako minuto; ob uri izklopa na izbrani dan ugasne strežnik.
+
+Urnik (/var/lib/hcc-control/schedule.json, zapiše dashboard):
+  {"enabled": true, "days": [0,1,2,3,4], "on": "07:00", "off": "23:30"}   (0 = ponedeljek)
+Strežnik deluje na izbrane dni med "on" in "off". Pred vsakim izklopom se v strojno uro (RTC) nastavi budilka
+za naslednji vklop - samo tako se lahko ugasnjen strežnik sam prižge.
+Stanje (naslednji izklop/vklop) se zapiše v /var/lib/hcc-control/power.json.
+"""
+import datetime as dt, json, os, re, subprocess, sys, time
+
+DIR = "/var/lib/hcc-control"
+REQUEST, RESULT = f"{DIR}/request.json", f"{DIR}/result.json"
+SCHEDULE, POWER = f"{DIR}/schedule.json", f"{DIR}/power.json"
+MAX_AGE_S = 120
+MIN_UPTIME_S = 600  # urnik ne ugasne strežnika, ki se je pravkar prižgal
+HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def load_schedule():
+    s = read_json(SCHEDULE)
+    if not isinstance(s, dict) or not s.get("enabled"):
+        return None
+    days = s.get("days")
+    on, off = s.get("on"), s.get("off")
+    if not (isinstance(days, list) and days and all(isinstance(d, int) and 0 <= d <= 6 for d in days)):
+        return None
+    if not (isinstance(on, str) and isinstance(off, str) and HHMM.match(on) and HHMM.match(off) and on < off):
+        return None
+    return {"days": sorted(set(days)), "on": on, "off": off}
+
+
+def at(day, hhmm):
+    h, m = map(int, hhmm.split(":"))
+    return dt.datetime.combine(day, dt.time(h, m))
+
+
+def next_event(sched, key, now):
+    for i in range(8):
+        day = (now + dt.timedelta(days=i)).date()
+        if day.weekday() in sched["days"]:
+            t = at(day, sched[key])
+            if t > now:
+                return t
+    return None
+
+
+def update_power_state(extra=None):
+    sched = load_schedule()
+    now = dt.datetime.now()
+    state = {
+        "generatedAt": int(time.time()),
+        "scheduleActive": sched is not None,
+        "nextOff": next_event(sched, "off", now).isoformat() if sched else None,
+        "nextOn": next_event(sched, "on", now).isoformat() if sched else None,
+    }
+    old = read_json(POWER) or {}
+    for k in ("lastShutdown", "lastWakeSet"):
+        if k in old:
+            state[k] = old[k]
+    state.update(extra or {})
+    write_json(POWER, state)
+    return state
+
+
+def set_wake(now):
+    """Nastavi RTC budilko na naslednji vklop po urniku (ali jo izbriše). Vrne čas ali None."""
+    sched = load_schedule()
+    subprocess.run(["rtcwake", "-m", "disable"], capture_output=True)
+    if not sched:
+        return None
+    nxt = next_event(sched, "on", now + dt.timedelta(minutes=2))
+    if not nxt:
+        return None
+    subprocess.run(["rtcwake", "-m", "no", "-t", str(int(nxt.timestamp()))], capture_output=True, check=True)
+    return nxt
+
+
+def power(command, reason):
+    now = dt.datetime.now()
+    wake = set_wake(now) if command == "poweroff" else None
+    update_power_state({
+        "lastShutdown": {"at": now.isoformat(timespec="seconds"), "command": command, "reason": reason},
+        "lastWakeSet": wake.isoformat() if wake else None,
+    })
+    # Proxmox ob izklopu sam ustavi vse CT/VM (pve-guests) in sinhronizira ZFS.
+    subprocess.run(["systemctl", command, "--no-block"], check=True)
+    return wake
+
+
+def handle_request():
+    req = read_json(REQUEST)
+    if not isinstance(req, dict) or req.get("action") not in ("shutdown", "reboot"):
+        return
+    rid = str(req.get("id", ""))[:64]
+    res = read_json(RESULT) or {}
+    if res.get("id") == rid or time.time() - float(req.get("at", 0)) > MAX_AGE_S:
+        return
+    action = req["action"]
+    state = {"action": action, "id": rid, "status": "running", "steps": [], "error": None,
+             "startedAt": int(time.time()), "finishedAt": None}
+    try:
+        wake = power("poweroff" if action == "shutdown" else "reboot", "dashboard")
+        label = "Izklapljam strežnik" if action == "shutdown" else "Ponovno zaganjam strežnik"
+        if wake:
+            label += f" · samodejni vklop {wake:%d. %m. ob %H:%M}"
+        state["steps"].append({"label": label, "status": "ok"})
+        state["status"] = "done"
+    except Exception as e:
+        state["status"], state["error"] = "error", str(e)[:400]
+    state["finishedAt"] = int(time.time())
+    write_json(RESULT, state)
+
+
+def run_schedule():
+    sched = load_schedule()
+    update_power_state()
+    if not sched:
+        return
+    now = dt.datetime.now()
+    with open("/proc/uptime") as f:
+        uptime = float(f.read().split()[0])
+    if now.weekday() in sched["days"] and now.strftime("%H:%M") == sched["off"] and uptime > MIN_UPTIME_S:
+        power("poweroff", "urnik")
+
+
+if __name__ == "__main__":
+    os.makedirs(DIR, exist_ok=True)
+    run_schedule() if "--schedule" in sys.argv else handle_request()

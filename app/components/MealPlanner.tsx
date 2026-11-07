@@ -1,13 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Box, Card, CardContent, Chip, IconButton, InputBase, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  InputBase,
+  List,
+  ListItemButton,
+  ListItemText,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import CasinoOutlinedIcon from "@mui/icons-material/CasinoOutlined";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
+import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
+import SearchIcon from "@mui/icons-material/Search";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import { useI18n } from "../i18n";
 import { mealIdeas } from "../../lib/i18n/mealIdeas";
+import { veganTop100 } from "../../lib/i18n/veganTop100";
 
 type MealItem = { id?: string; date: string; meal: string };
 
@@ -63,6 +85,9 @@ export default function MealPlanner() {
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<"load" | "save" | null>(null);
+  // Dan, za katerega je odprt izbirnik "100 najboljših veganskih".
+  const [picker, setPicker] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const { t, lang, locale } = useI18n();
   // Prepreči dvojno shranjevanje (Enter sproži save, nato še blur).
   const skipBlur = useRef(false);
@@ -136,6 +161,24 @@ export default function MealPlanner() {
     setEditing(null);
     void save(date, pick);
   };
+
+  const openPicker = (date: string) => {
+    skipBlur.current = true;
+    setEditing(null);
+    setQuery("");
+    setPicker(date);
+  };
+
+  const pick = (dish: string) => {
+    if (picker) void save(picker, dish);
+    setPicker(null);
+  };
+
+  // Iskanje ne loči velikih črk in šumnikov ("cicerika" najde "Čičerika").
+  const normalize = (v: string) => v.toLocaleLowerCase(locale).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const top100 = veganTop100[lang].map((dish, i) => ({ dish, rank: i + 1 }));
+  const filtered = query.trim() ? top100.filter((d) => normalize(d.dish).includes(normalize(query.trim()))) : top100;
+  const pickerCurrent = picker ? meals.get(picker)?.meal : undefined;
 
   const planned = weeks ? weeks.flat().filter((d) => !d.isPast && meals.get(d.date)?.meal).length : 0;
   const upcoming = weeks ? weeks.flat().filter((d) => !d.isPast).length : 0;
@@ -268,23 +311,40 @@ export default function MealPlanner() {
                                   inputProps={{ style: { textAlign: "center" } }}
                                   sx={{ flex: 1, fontSize: 13, lineHeight: 1.35, p: 0 }}
                                 />
-                                <Tooltip title={t("meals.surprise")}>
-                                  <IconButton
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => randomize(day.date)}
-                                    aria-label={t("meals.random")}
-                                    sx={{
-                                      alignSelf: "center",
-                                      width: 36,
-                                      height: 36,
-                                      color: accent,
-                                      bgcolor: alpha(accent, 0.12),
-                                      "&:hover": { bgcolor: alpha(accent, 0.24) },
-                                    }}
-                                  >
-                                    <CasinoOutlinedIcon sx={{ fontSize: 22 }} />
-                                  </IconButton>
-                                </Tooltip>
+                                <Box sx={{ display: "flex", justifyContent: "center", gap: 0.5 }}>
+                                  <Tooltip title={t("meals.surprise")}>
+                                    <IconButton
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => randomize(day.date)}
+                                      aria-label={t("meals.random")}
+                                      sx={{
+                                        width: 28,
+                                        height: 28,
+                                        color: accent,
+                                        bgcolor: alpha(accent, 0.12),
+                                        "&:hover": { bgcolor: alpha(accent, 0.24) },
+                                      }}
+                                    >
+                                      <CasinoOutlinedIcon sx={{ fontSize: 18 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title={t("meals.top100")}>
+                                    <IconButton
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => openPicker(day.date)}
+                                      aria-label={t("meals.top100")}
+                                      sx={{
+                                        width: 28,
+                                        height: 28,
+                                        color: accent,
+                                        bgcolor: alpha(accent, 0.12),
+                                        "&:hover": { bgcolor: alpha(accent, 0.24) },
+                                      }}
+                                    >
+                                      <MenuBookOutlinedIcon sx={{ fontSize: 17 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
                               </Box>
                             ) : meal ? (
                               <Typography
@@ -327,6 +387,76 @@ export default function MealPlanner() {
           </Box>
         </Box>
       </CardContent>
+
+      <Dialog open={picker !== null} onClose={() => setPicker(null)} fullWidth maxWidth="xs" scroll="paper">
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pr: 1.5, pb: 1 }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+              {t("meals.top100Title")}
+            </Typography>
+            {picker && weeks && (
+              <Typography variant="caption" color="text.secondary">
+                {(() => {
+                  const d = weeks.flat().find((x) => x.date === picker);
+                  return d ? `${d.weekday} ${d.dayNumber} ${d.month}` : "";
+                })()}
+              </Typography>
+            )}
+          </Box>
+          <IconButton onClick={() => setPicker(null)} aria-label={t("meals.close")} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <Box sx={{ px: 3, pb: 1.5 }}>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            value={query}
+            placeholder={t("meals.search")}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && filtered.length > 0) {
+                e.preventDefault();
+                pick(filtered[0].dish);
+              }
+            }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        </Box>
+        <DialogContent dividers sx={{ p: 0, height: { xs: "60vh", sm: 440 } }}>
+          {filtered.length === 0 ? (
+            <Typography color="text.secondary" sx={{ p: 3, textAlign: "center", fontSize: 14 }}>
+              {t("meals.noResults")}
+            </Typography>
+          ) : (
+            <List dense disablePadding>
+              {filtered.map(({ dish, rank }) => {
+                const selected = dish === pickerCurrent;
+                return (
+                  <ListItemButton key={rank} selected={selected} onClick={() => pick(dish)} sx={{ gap: 1.5, py: 0.75 }}>
+                    <Typography
+                      sx={{ width: 26, flexShrink: 0, textAlign: "right", fontSize: 12, fontWeight: 600, color: "text.secondary" }}
+                    >
+                      {rank}.
+                    </Typography>
+                    <ListItemText primary={dish} slotProps={{ primary: { sx: { fontSize: 14 } } }} />
+                    {selected && <CheckIcon fontSize="small" color="primary" />}
+                  </ListItemButton>
+                );
+              })}
+            </List>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

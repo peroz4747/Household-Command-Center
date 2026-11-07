@@ -18,6 +18,8 @@ services:
       # CPU temperature in systemd stanje s Proxmox hosta (zapiše jih hcc-host-status timer,
       # v CT 101 je /var/lib/hcc-host priklopljen na /srv/hcc-host). Neobvezno.
       - /srv/hcc-host:/host-status:ro
+      # Zahteve za varen izklop/vklop ZFS bazena tank (izvede hcc-tank-control na hostu, mp1 v CT 101).
+      - /srv/hcc-control:/host-control
     depends_on:
       - docker-proxy
     command: ["npm", "start"]

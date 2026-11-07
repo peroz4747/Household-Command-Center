@@ -1,0 +1,9 @@
+[Unit]
+Description=Zahteve dashboarda za ZFS bazen tank
+
+[Path]
+PathChanged=/var/lib/hcc-control/request.json
+Unit=hcc-tank-control.service
+
+[Install]
+WantedBy=multi-user.target

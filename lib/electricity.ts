@@ -6,7 +6,8 @@
 // Kode registrov se poiščejo prek GET /reading-type (shranjeno 7 dni); MOJELEKTRO_READING_TYPES jih lahko povozi.
 import storage from "./storage";
 import { billingPeriod, toDateString } from "./billing";
-import { intervalInfo, tariffFor, type Block } from "./networkTariff";
+import { intervalInfo, type Block } from "./networkTariff";
+import { computeBill, FALLBACK_AGREED_POWER, type BillBreakdown } from "./electricityBill";
 
 const API_URL = process.env.MOJELEKTRO_API_URL ?? "https://api.informatika.si/mojelektro/v1";
 const REFRESH_MS = 3 * 3600_000; // podatki so dnevni, zato največ vsake 3 ure
@@ -37,10 +38,11 @@ export type ElectricityData = {
   byTariff: Partial<Record<"VT" | "MT", number>>;
   lastPeriodKwh: number | null;
   projectedKwh: number | null;
-  costEur: number | null; // omrežnina (+ energija dobavitelja, če je cena nastavljena), brez DDV in prispevkov
-  networkEur: number | null; // omrežnina: energija po blokih (+ moč, če je dogovorjena moč znana)
-  networkPowerIncluded: boolean;
-  supplyEur: number | null; // energija po ceni dobavitelja (ELECTRICITY_PRICE*)
+  costEur: number | null; // račun doslej, z DDV (vse postavke kot na računu)
+  projectedCostEur: number | null; // ocena računa za cel mesec, z DDV
+  lastPeriodCostEur: number | null; // račun za prejšnji mesec, z DDV (izračunan po istih postavkah)
+  bill: BillBreakdown | null; // postavke računa doslej
+  projectedBill: BillBreakdown | null;
   byBlock: Partial<Record<Block, number>>; // kWh po časovnih blokih
   fetchedAt: string;
 };
@@ -243,63 +245,82 @@ async function fetchElectricity(stored: Stored): Promise<ElectricityData> {
   }
   const projectedKwh = usedKwh !== null && daysWithData > 0 ? (usedKwh / daysWithData) * period.totalDays : null;
 
-  // Omrežnina: 15-minutna energija po časovnih blokih × tarifa (obdobje ima največ 31 dni, torej 1 zahteva).
-  const byBlock: Partial<Record<Block, number>> = {};
-  let networkEnergy = 0;
-  let has15min = false;
-  try {
-    const params = new URLSearchParams({
-      usagePoint: process.env.MOJELEKTRO_USAGE_POINT!,
-      startTime: periodStart,
-      endTime: todayLj,
-    });
-    params.append("option", `ReadingType=${A_PLUS_15MIN}`);
-    const body = await api<any>("/meter-readings", params);
-    for (const b of body?.intervalBlocks ?? []) {
-      for (const r of b?.intervalReadings ?? []) {
-        const kwh = Number(r.value);
-        if (!Number.isFinite(kwh)) continue;
-        // Časovna značka označuje konec 15-minutnega intervala.
-        const { day, block } = intervalInfo(new Date(Date.parse(r.timestamp) - 15 * 60_000));
-        if (day < periodStart) continue;
-        const tariff = tariffFor(day);
-        if (!tariff) continue;
-        byBlock[block] = (byBlock[block] ?? 0) + kwh;
-        networkEnergy += kwh * tariff.energy[block - 1];
-        has15min = true;
+  // 15-minutna energija po časovnih blokih (za omrežnino; API dovoli do 35 dni na zahtevo, obdobje ima največ 31).
+  const blocksBetween = async (from: string, until: string, endParam: string) => {
+    const out: Partial<Record<Block, number>> = {};
+    let any = false;
+    try {
+      const params = new URLSearchParams({ usagePoint: process.env.MOJELEKTRO_USAGE_POINT!, startTime: from, endTime: endParam });
+      params.append("option", `ReadingType=${A_PLUS_15MIN}`);
+      const body = await api<any>("/meter-readings", params);
+      for (const b of body?.intervalBlocks ?? []) {
+        for (const r of b?.intervalReadings ?? []) {
+          const kwh = Number(r.value);
+          if (!Number.isFinite(kwh)) continue;
+          // Časovna značka označuje konec 15-minutnega intervala.
+          const { day, block } = intervalInfo(new Date(Date.parse(r.timestamp) - 15 * 60_000));
+          if (day < from || day > until) continue;
+          out[block] = (out[block] ?? 0) + kwh;
+          any = true;
+        }
       }
+    } catch (e) {
+      if (e instanceof MojElektroError && (e.code === "unauthorized" || e.code === "forbidden")) throw e;
     }
-  } catch (e) {
-    if (e instanceof MojElektroError && (e.code === "unauthorized" || e.code === "forbidden")) throw e;
-  }
+    return any ? out : null;
+  };
+  // Le dnevi, ki so vključeni tudi v stanja števca (do dataUntil).
+  const byBlock: Partial<Record<Block, number>> = dataUntil ? ((await blocksBetween(periodStart, dataUntil, todayLj)) ?? {}) : {};
+  const has15min = Object.keys(byBlock).length > 0;
 
-  // Postavka za moč: dogovorjena moč po blokih × EUR/kW/mesec, sorazmerno po dnevih z znanimi podatki.
-  let networkPower = 0;
-  let powerKnown = false;
-  if (dataUntil) {
+  // Račun po postavkah: doslej (dnevi s podatki) in ocena za cel mesec.
+  let bill: BillBreakdown | null = null;
+  let projectedBill: BillBreakdown | null = null;
+  const vtKwh = vt?.used ?? null;
+  const mtKwh = mt?.used ?? null;
+  if (dataUntil && has15min && vtKwh !== null && mtKwh !== null) {
     const powers = await agreedPowers(stored);
-    for (let d = new Date(period.start); toDateString(d) <= dataUntil; d.setDate(d.getDate() + 1)) {
-      const day = toDateString(d);
-      const p = powers.find((x) => x.from <= day && day <= x.to);
-      const tariff = tariffFor(day);
-      if (!p || !tariff || p.kw.every((kw) => kw === 0)) continue;
-      const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-      networkPower += p.kw.reduce((sum, kw, i) => sum + kw * tariff.power[i], 0) / daysInMonth;
-      powerKnown = true;
+    const powerFor = (day: string) => {
+      const p = powers.find((x) => x.from <= day && day <= x.to && x.kw.some((kw) => kw > 0));
+      return (p ?? FALLBACK_AGREED_POWER.find((x) => x.from <= day && day <= x.to))?.kw ?? null;
+    };
+    const daysOf = (last: string) => {
+      const out = [];
+      for (let d = new Date(period.start); toDateString(d) <= last; d.setDate(d.getDate() + 1)) {
+        const day = toDateString(d);
+        out.push({ day, daysInMonth: period.totalDays, kw: powerFor(day) });
+      }
+      return out;
+    };
+    bill = computeBill({ vtKwh, mtKwh, byBlock, days: daysOf(dataUntil) });
+    // Ocena: poraba (in razmerje VT/MT ter blokov) se podaljša na cel mesec, mesečne postavke so cele.
+    const k = daysWithData > 0 ? period.totalDays / daysWithData : 1;
+    const scaled = Object.fromEntries(Object.entries(byBlock).map(([b, v]) => [b, (v ?? 0) * k]));
+    projectedBill = computeBill({
+      vtKwh: vtKwh * k,
+      mtKwh: mtKwh * k,
+      byBlock: scaled,
+      days: daysOf(toDateString(period.end)),
+    });
+  }
+  // Račun za prejšnji mesec (za primerjavo v evrih).
+  let lastPeriodCostEur: number | null = null;
+  if (vt?.last != null && mt?.last != null) {
+    const prevBlocks = await blocksBetween(prevStart, toDateString(prev.end), periodStart);
+    if (prevBlocks) {
+      const powers = await agreedPowers(stored);
+      const days = [];
+      for (let d = new Date(prev.start); d <= prev.end; d.setDate(d.getDate() + 1)) {
+        const day = toDateString(d);
+        const p = powers.find((x) => x.from <= day && day <= x.to && x.kw.some((kw) => kw > 0));
+        const kw = (p ?? FALLBACK_AGREED_POWER.find((x) => x.from <= day && day <= x.to))?.kw ?? null;
+        days.push({ day, daysInMonth: prev.totalDays, kw });
+      }
+      lastPeriodCostEur = computeBill({ vtKwh: vt.last, mtKwh: mt.last, byBlock: prevBlocks, days })?.total ?? null;
     }
   }
-  const networkEur = has15min ? networkEnergy + networkPower : null;
-
-  const priceVt = Number(process.env.ELECTRICITY_PRICE_VT ?? process.env.ELECTRICITY_PRICE ?? NaN);
-  const priceMt = Number(process.env.ELECTRICITY_PRICE_MT ?? process.env.ELECTRICITY_PRICE ?? NaN);
-  const price = Number(process.env.ELECTRICITY_PRICE ?? NaN);
-  let supplyEur: number | null = null;
-  if (vt?.used != null && mt?.used != null && Number.isFinite(priceVt) && Number.isFinite(priceMt)) {
-    supplyEur = vt.used * priceVt + mt.used * priceMt;
-  } else if (usedKwh !== null && Number.isFinite(price)) {
-    supplyEur = usedKwh * price;
-  }
-  const costEur = networkEur === null && supplyEur === null ? null : (networkEur ?? 0) + (supplyEur ?? 0);
+  const costEur = bill?.total ?? null;
+  const projectedCostEur = projectedBill?.total ?? null;
 
   return {
     periodStart,
@@ -310,9 +331,10 @@ async function fetchElectricity(stored: Stored): Promise<ElectricityData> {
     lastPeriodKwh,
     projectedKwh,
     costEur,
-    networkEur,
-    networkPowerIncluded: powerKnown,
-    supplyEur,
+    projectedCostEur,
+    lastPeriodCostEur,
+    bill,
+    projectedBill,
     byBlock,
     fetchedAt: new Date().toISOString(),
   };
@@ -328,7 +350,8 @@ export async function getElectricity(): Promise<ElectricityResponse> {
   const fresh = stored.data && now - Date.parse(stored.data.fetchedAt) < REFRESH_MS;
   const retryBlocked = stored.error && stored.lastAttemptAt && now - stored.lastAttemptAt < ERROR_RETRY_MS;
   // Novo obračunsko obdobje → podatki niso več veljavni.
-  const samePeriod = stored.data?.periodEnd === toDateString(billingPeriod(new Date()).end);
+  const samePeriod =
+    stored.data?.periodEnd === toDateString(billingPeriod(new Date()).end) && stored.data?.lastPeriodCostEur !== undefined;
 
   if (!(fresh && samePeriod) && !retryBlocked) {
     if (!inFlight) {

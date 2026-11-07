@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Box, Card, CardContent, Chip, LinearProgress, Typography } from "@mui/material";
+import { Box, Card, CardContent, Chip, LinearProgress, Tooltip, Typography } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
-import WaterDropIcon from "@mui/icons-material/WaterDrop";
 import { useI18n } from "../i18n";
 import { billingPeriod } from "../../lib/billing";
 import type { ElectricityResponse } from "../../lib/electricity";
+import type { BillBreakdown } from "../../lib/electricityBill";
 
-// ZAČASNO: izmišljeni podatki (voda vedno, elektrika dokler Moj Elektro ni nastavljen).
+// Izmišljeni podatki, dokler Moj Elektro ni nastavljen.
 // Poraba se računa iz dnevnega povprečja, da je skladna s trenutnim dnem v obdobju.
 const DEMO = {
   electricity: { perDay: 11.4, pricePerUnit: 0.21, lastPeriod: 362 },
-  water: { perDay: 0.31, pricePerUnit: 2.35, lastPeriod: 9.1 },
 };
 
 type MeterValues = {
@@ -20,17 +19,67 @@ type MeterValues = {
   projected: number | null;
   lastPeriod: number | null;
   cost: number | null;
+  projectedCost?: number | null;
+  lastPeriodCost?: number | null; // če je znan, se primerja v evrih namesto v enotah
+  lastPeriodLabel?: string; // npr. "oktober"
+  bill?: BillBreakdown | null; // postavke računa (za namig ob znesku)
 };
 
 const fmtDate = (d: Date, locale: string) => d.toLocaleDateString(locale, { day: "numeric", month: "short" });
 const fmtNum = (n: number, decimals: number, locale: string) =>
   n.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-const fmtEur = (n: number, locale: string) =>
-  n.toLocaleString(locale, { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const fmtEur = (n: number, locale: string, decimals = 0) =>
+  n.toLocaleString(locale, {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 
-function demoValues(meter: (typeof DEMO)["water"], elapsedDays: number, totalDays: number): MeterValues {
+function BillTooltip({ bill }: { bill: BillBreakdown }) {
+  const { t, locale } = useI18n();
+  const rows: [string, number][] = [
+    [t("billing.bill.supply"), bill.supply],
+    [t("billing.bill.network"), bill.networkEnergy + bill.networkPower],
+    [t("billing.bill.contributions"), bill.contributions + bill.excise],
+    [t("billing.bill.fees"), bill.fees],
+    [t("billing.bill.vat"), bill.vat],
+  ];
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: "auto auto", columnGap: 2, rowGap: 0.25, py: 0.5 }}>
+      <Typography variant="caption" sx={{ gridColumn: "1 / -1", fontWeight: 700, mb: 0.25 }}>
+        {t("billing.bill.title")}
+      </Typography>
+      {rows.map(([label, v]) => (
+        <Box key={label} sx={{ display: "contents" }}>
+          <Typography variant="caption">{label}</Typography>
+          <Typography variant="caption" sx={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+            {fmtEur(v, locale, 2)}
+          </Typography>
+        </Box>
+      ))}
+      <Typography variant="caption" sx={{ fontWeight: 700, borderTop: "1px solid rgba(255,255,255,0.2)", pt: 0.25 }}>
+        {t("billing.bill.total")}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{ fontWeight: 700, textAlign: "right", borderTop: "1px solid rgba(255,255,255,0.2)", pt: 0.25 }}
+      >
+        {fmtEur(bill.total, locale, 2)}
+      </Typography>
+    </Box>
+  );
+}
+
+function demoValues(meter: (typeof DEMO)["electricity"], elapsedDays: number, totalDays: number): MeterValues {
   const used = meter.perDay * elapsedDays;
-  return { used, projected: meter.perDay * totalDays, lastPeriod: meter.lastPeriod, cost: used * meter.pricePerUnit };
+  return {
+    used,
+    projected: meter.perDay * totalDays,
+    lastPeriod: meter.lastPeriod,
+    cost: used * meter.pricePerUnit,
+    projectedCost: meter.perDay * totalDays * meter.pricePerUnit,
+  };
 }
 
 function Meter({
@@ -53,9 +102,13 @@ function Meter({
   notes: { text: string; color?: string }[];
 }) {
   const { t, locale } = useI18n();
-  const { used, projected, lastPeriod, cost } = values;
-  const vsLast =
-    projected !== null && lastPeriod ? Math.round(((projected - lastPeriod) / lastPeriod) * 100) : null;
+  const { used, projected, lastPeriod, cost, projectedCost, bill, lastPeriodCost, lastPeriodLabel } = values;
+  const byEur = projectedCost != null && !!lastPeriodCost;
+  const vsLast = byEur
+    ? Math.round(((projectedCost! - lastPeriodCost!) / lastPeriodCost!) * 100)
+    : projected !== null && lastPeriod
+      ? Math.round(((projected - lastPeriod) / lastPeriod) * 100)
+      : null;
 
   return (
     <Box>
@@ -82,9 +135,15 @@ function Meter({
           </Typography>
         </Box>
         {cost !== null && (
-          <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
-            ≈ {fmtEur(cost, locale)}
-          </Typography>
+          <Tooltip title={bill ? <BillTooltip bill={bill} /> : ""} placement="top" arrow>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: "auto", cursor: bill ? "help" : "default", whiteSpace: "nowrap" }}
+            >
+              ≈ {fmtEur(cost, locale)}
+            </Typography>
+          </Tooltip>
         )}
       </Box>
 
@@ -110,12 +169,15 @@ function Meter({
         {projected !== null && (
           <Typography variant="caption" color="text.secondary">
             → {fmtNum(projected, decimals, locale)} {unit}
+            {projectedCost != null && ` · ≈ ${fmtEur(projectedCost, locale)}`}
           </Typography>
         )}
         {vsLast !== null && (
           <Typography variant="caption" sx={{ color: vsLast > 0 ? "#f87171" : "#22c55e", fontWeight: 600 }}>
             {vsLast > 0 ? "+" : ""}
-            {t("billing.vsLast", { n: vsLast })}
+            {byEur && lastPeriodLabel
+              ? t("billing.vsLastEur", { n: vsLast, month: lastPeriodLabel, eur: fmtEur(lastPeriodCost!, locale) })
+              : t("billing.vsLast", { n: vsLast })}
           </Typography>
         )}
       </Box>
@@ -161,6 +223,10 @@ export default function UtilityUsage() {
         projected: e?.projectedKwh ?? null,
         lastPeriod: e?.lastPeriodKwh ?? null,
         cost: e?.costEur ?? null,
+        projectedCost: e?.projectedCostEur ?? null,
+        bill: e?.bill ?? null,
+        lastPeriodCost: e?.lastPeriodCostEur ?? null,
+        lastPeriodLabel: billingPeriod(period.start, -1).start.toLocaleDateString(locale, { month: "long" }),
       };
       if (electricity?.error) {
         const err = electricity.error;
@@ -201,16 +267,6 @@ export default function UtilityUsage() {
               values={elValues}
               source={live ? `Moj Elektro${electricity?.distributor ? ` (${electricity.distributor})` : ""}` : t("common.demo")}
               notes={elNotes}
-            />
-            <Meter
-              icon={<WaterDropIcon sx={{ fontSize: 18 }} />}
-              color="#38bdf8"
-              label={t("billing.water")}
-              unit="m³"
-              decimals={1}
-              values={demoValues(DEMO.water, period.elapsedDays, period.totalDays)}
-              source={t("common.demo")}
-              notes={[]}
             />
           </Box>
         )}

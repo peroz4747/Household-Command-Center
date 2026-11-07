@@ -1,0 +1,38 @@
+#!/usr/bin/python3
+"""Zapiše CPU temperature, pokvarjene systemd enote in čakajoče posodobitve paketov v JSON za Household Command Center.
+CT 101 datoteko bere read-only (bind mount /var/lib/hcc-host)."""
+import glob, json, os, subprocess, time
+
+def read(path):
+    with open(path) as f:
+        return f.read().strip()
+
+cpu = []
+for hw in glob.glob("/sys/class/hwmon/hwmon*"):
+    if read(f"{hw}/name") != "coretemp":
+        continue
+    for inp in sorted(glob.glob(f"{hw}/temp*_input")):
+        label_file = inp.replace("_input", "_label")
+        label = read(label_file) if os.path.exists(label_file) else os.path.basename(inp)
+        cpu.append({"label": label, "temp": int(read(inp)) / 1000})
+
+failed = subprocess.run(
+    ["systemctl", "--failed", "--no-legend", "--plain", "--output=json"],
+    capture_output=True, text=True,
+).stdout
+failed_units = [u["unit"] for u in json.loads(failed or "[]")]
+
+# Seznam posodobitev, ki ga pveupdate (dnevni aptupdate) zapiše; API zanj zahteva Sys.Modify.
+try:
+    with open("/var/lib/pve-manager/pkgupdates") as f:
+        pkg_updates = sorted(p["Package"] for p in json.load(f))
+except (OSError, ValueError, KeyError, TypeError):
+    pkg_updates = None
+
+out = {"generatedAt": int(time.time()), "cpuTemps": cpu, "failedUnits": failed_units, "pkgUpdates": pkg_updates}
+os.makedirs("/var/lib/hcc-host", exist_ok=True)
+tmp = "/var/lib/hcc-host/.status.json.tmp"
+with open(tmp, "w") as f:
+    json.dump(out, f)
+os.chmod(tmp, 0o644)
+os.replace(tmp, "/var/lib/hcc-host/status.json")

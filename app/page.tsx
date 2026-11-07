@@ -1,7 +1,6 @@
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import GarageIcon from "@mui/icons-material/Garage";
 import LightbulbIcon from "@mui/icons-material/Lightbulb";
-import WifiIcon from "@mui/icons-material/Wifi";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import TimeToLeaveIcon from "@mui/icons-material/TimeToLeave";
 import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
@@ -12,6 +11,7 @@ import CalendarTimeline from "./components/CalendarTimeline";
 import MealPlanner from "./components/MealPlanner";
 import ClientDashboard, { ClimateControl } from "./components/ClientDashboard";
 import ServerStatus from "./components/ServerStatus";
+import ServerPower from "./components/ServerPower";
 import { Box, Typography } from "@mui/material";
 import EnvironmentOverview from "./components/EnvironmentOverview";
 import Shortcuts from "./components/Shortcuts";
@@ -56,7 +56,6 @@ export default async function Home() {
   const networkAndEnergyItems = [
     { title: t("home.lights"), subtitle: t("home.lightsOff"), icon: LightbulbIcon, color: "success" },
     { title: t("home.ac"), subtitle: t("home.acOn"), icon: ThermostatIcon, color: "primary" },
-    { title: t("home.wifi"), subtitle: t("home.wifiOnline"), icon: WifiIcon, color: "success" },
   ];
 
   return (
@@ -89,9 +88,10 @@ export default async function Home() {
           </Typography>
         </Box>
         <Box>
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", justifyContent: { xs: "center", md: "flex-end" } }}>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", justifyContent: { xs: "center", md: "flex-end" } }}>
             <ServerStatus />
             <NetworkOverview />
+            <ServerPower />
           </Box>
         </Box>
 
@@ -153,9 +153,19 @@ export default async function Home() {
           >
             <EnvironmentOverview rooms={rooms} />
 
-            <Shortcuts shortcuts={shortcuts} overline={t("shortcuts.overline")} title={t("shortcuts.title")} />
+            <Shortcuts
+              shortcuts={shortcuts}
+              overline={t("shortcuts.overline")}
+              title={t("shortcuts.title")}
+              notConnected={t("common.notConnected")}
+            />
 
-            <NetworkAndEnergy items={networkAndEnergyItems} overline={t("home.overline")} title={t("home.title")} />
+            <NetworkAndEnergy
+              items={networkAndEnergyItems}
+              overline={t("home.overline")}
+              title={t("home.title")}
+              notConnected={t("common.notConnected")}
+            />
           </Box>
 
           {/* AVTO */}

@@ -1,0 +1,6 @@
+[Unit]
+Description=Write host status JSON for Household Command Center
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hcc-host-status

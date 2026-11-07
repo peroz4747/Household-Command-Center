@@ -36,6 +36,7 @@ import {
 } from "@mui/material";
 import type { CheckStatus, HealthReport, ServerDetails, TaskEntry } from "../../lib/server";
 import { useI18n } from "../i18n";
+import TankControl from "./TankControl";
 import type { MessageKey } from "../../lib/i18n";
 
 const REFRESH_MS = 10_000;
@@ -478,6 +479,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                     {data.storages.map((s) => (
                       <UsageBar key={s.name} label={s.name} sub={s.type} used={s.used} total={s.total} percent={s.percent} />
                     ))}
+                    <TankControl imported={data.pools.some((p) => p.name === "tank")} onDone={() => void load()} />
                   </Stack>
                 </Section>
 

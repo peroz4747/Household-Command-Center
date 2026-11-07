@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Box, Button, Card, CardContent, Chip, Typography, Divider } from "@mui/material";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import { useI18n } from "../i18n";
+import { Dimmed, NotConnectedChip } from "./NotConnected";
 
 interface CameraZone {
   label: string;
@@ -69,11 +70,16 @@ export function ClimateControl() {
   return (
     <Card sx={{ minHeight: 205, overflow: "hidden" }}>
       <CardContent>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+          <Typography variant="subtitle2" color="secondary">
+            {t("climate.overline")}
+          </Typography>
+          <NotConnectedChip label={t("common.notConnected")} />
+        </Box>
+        {/* Klima še ni povezana - vrednosti in gumbi so samo predogled. */}
+        <Dimmed>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Box>
-            <Typography variant="subtitle2" color="secondary">
-              {t("climate.overline")}
-            </Typography>
             <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
               {t("climate.idle")}
             </Typography>
@@ -94,6 +100,7 @@ export function ClimateControl() {
             +
           </Button>
         </Box>
+        </Dimmed>
       </CardContent>
     </Card>
   );

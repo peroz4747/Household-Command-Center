@@ -1,0 +1,116 @@
+#!/usr/bin/python3
+"""Varen izklop/vklop ZFS bazena "tank" na zahtevo Household Command Center (CT 101).
+
+Dashboard zapiše /var/lib/hcc-control/request.json = {"action": "export" | "import", "id": "...", "at": <unix s>}.
+hcc-tank-control.path ob spremembi zažene to skripto. Izvede SAMO spodnja fiksna postopka in zapiše
+napredek v /var/lib/hcc-control/result.json (CT 101 ga bere).
+"""
+import json, os, subprocess, time
+
+DIR = "/var/lib/hcc-control"
+REQUEST = f"{DIR}/request.json"
+RESULT = f"{DIR}/result.json"
+POOL = "tank"
+CTS = ["103", "104"]  # NAS, Jellyfin - uporabljata /tank
+MAX_AGE_S = 120
+
+state = {"action": None, "id": None, "status": "idle", "steps": [], "error": None, "startedAt": None, "finishedAt": None}
+
+
+def write():
+    tmp = RESULT + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, RESULT)
+
+
+def run(label, cmd, ok_codes=(0,), timeout=300):
+    state["steps"].append({"label": label, "status": "running"})
+    write()
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    step = state["steps"][-1]
+    step["status"] = "ok" if p.returncode in ok_codes else "error"
+    out = (p.stdout + p.stderr).strip()
+    if out:
+        step["output"] = out[-500:]
+    write()
+    if p.returncode not in ok_codes:
+        raise RuntimeError(f"{label}: {out[-300:] or p.returncode}")
+    return out
+
+
+def pool_imported():
+    return subprocess.run(["zpool", "list", "-H", POOL], capture_output=True).returncode == 0
+
+
+def ct_running(ct):
+    out = subprocess.run(["pct", "status", ct], capture_output=True, text=True).stdout
+    return "running" in out
+
+
+def export():
+    if not pool_imported():
+        state["steps"].append({"label": f"Bazen {POOL} je že izklopljen", "status": "ok"})
+        return
+    stopped = []
+    try:
+        for ct in CTS:
+            if ct_running(ct):
+                run(f"Ustavljam CT {ct}", ["pct", "shutdown", ct, "--timeout", "120"], timeout=180)
+                stopped.append(ct)
+        status = subprocess.run(["zpool", "status", POOL], capture_output=True, text=True).stdout
+        if "scrub in progress" in status:
+            run("Začasno ustavljam scrub", ["zpool", "scrub", "-p", POOL])
+        run(f"Zapiram bazen {POOL} (zpool export)", ["zpool", "export", POOL], timeout=300)
+    except Exception:
+        # Bazen ostane odprt - vrni storitve v delovanje.
+        if pool_imported():
+            for ct in stopped:
+                subprocess.run(["pct", "start", ct], capture_output=True)
+        raise
+
+
+def import_():
+    if not pool_imported():
+        run(f"Odpiram bazen {POOL} (zpool import)", ["zpool", "import", POOL], timeout=300)
+    health = run("Preverjam stanje", ["zpool", "list", "-H", "-o", "health", POOL])
+    if health.strip() != "ONLINE":
+        raise RuntimeError(f"Bazen ni ONLINE ({health.strip()}) - CT-jev ne zaganjam")
+    status = subprocess.run(["zpool", "status", POOL], capture_output=True, text=True).stdout
+    if "scrub paused" in status:
+        run("Nadaljujem scrub", ["zpool", "scrub", POOL])
+    for ct in CTS:
+        if not ct_running(ct):
+            run(f"Zaganjam CT {ct}", ["pct", "start", ct], timeout=180)
+
+
+def main():
+    try:
+        with open(REQUEST) as f:
+            req = json.load(f)
+    except (OSError, ValueError):
+        return
+    action, rid = req.get("action"), str(req.get("id", ""))[:64]
+    try:
+        with open(RESULT) as f:
+            if json.load(f).get("id") == rid:
+                return  # že obdelano
+    except (OSError, ValueError):
+        pass
+    if action not in ("export", "import") or time.time() - float(req.get("at", 0)) > MAX_AGE_S:
+        return
+    state.update(action=action, id=rid, status="running", startedAt=int(time.time()))
+    write()
+    try:
+        export() if action == "export" else import_()
+        state["status"] = "done"
+    except Exception as e:
+        state["status"] = "error"
+        state["error"] = str(e)[:400]
+    state["finishedAt"] = int(time.time())
+    write()
+
+
+if __name__ == "__main__":
+    main()
