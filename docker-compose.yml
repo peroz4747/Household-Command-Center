@@ -5,14 +5,16 @@ services:
       dockerfile: Dockerfile
     image: household-command-center:latest
     restart: unless-stopped
-    ports:
-      - '3003:3000'
+    # Host omrežje: potrebno za Wake-on-LAN (broadcast iz bridge omrežja ne pride v domače omrežje).
+    # Aplikacija zato posluša neposredno na portu 3003 LXC kontejnerja (isti naslov kot prej).
+    network_mode: host
     env_file:
       - path: .env
         required: false
     environment:
       - NODE_ENV=production
-      - DOCKER_API_URL=http://docker-proxy:2375
+      - PORT=3003
+      - DOCKER_API_URL=http://127.0.0.1:2375
     volumes:
       - ./data:/app/data
       # CPU temperature in systemd stanje s Proxmox hosta (zapiše jih hcc-host-status timer,
@@ -20,6 +22,8 @@ services:
       - /srv/hcc-host:/host-status:ro
       # Zahteve za varen izklop/vklop ZFS bazena tank (izvede hcc-tank-control na hostu, mp1 v CT 101).
       - /srv/hcc-control:/host-control
+      # SSH ključ za izklop/spanje računalnika (glej docs/pc-power.md). Neobvezno.
+      - ./secrets:/app/secrets:ro
     depends_on:
       - docker-proxy
     command: ["npm", "start"]
@@ -32,5 +36,8 @@ services:
     environment:
       - CONTAINERS=1
       - POST=0
+    # Dostopen samo lokalno (aplikacija teče v host omrežju).
+    ports:
+      - '127.0.0.1:2375:2375'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

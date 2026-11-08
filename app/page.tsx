@@ -18,6 +18,7 @@ import Shortcuts from "./components/Shortcuts";
 import NetworkAndEnergy from "./components/NetworkAndEnergy";
 import NewsFeed from "./components/NewsFeed";
 import NetworkOverview from "./components/NetworkOverview";
+import PcPower from "./components/PcPower";
 import HeaderClock from "./components/HeaderClock";
 import UtilityUsage from "./components/UtilityUsage";
 import CarStatus from "./components/CarStatus";
@@ -92,6 +93,7 @@ export default async function Home() {
             <ServerStatus />
             <NetworkOverview />
             <ServerPower />
+            <PcPower />
           </Box>
         </Box>
 

@@ -43,3 +43,6 @@ next-env.d.ts
 
 # podatki in žetoni dashboarda (TV, elektrika, avto ...)
 /data/
+
+# SSH ključi (izklop računalnika)
+/secrets/
