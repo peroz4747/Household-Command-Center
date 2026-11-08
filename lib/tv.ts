@@ -15,6 +15,7 @@ export const TV_APPS = {
   youtube: "111299001912",
   hbomax: "3202301029760",
   jellyfin: "3202007021208",
+  spotify: "3201606009684",
 } as const;
 export type TvApp = keyof typeof TV_APPS;
 
@@ -41,22 +42,55 @@ export type TvKey = (typeof TV_KEYS)[number];
 
 export type TvStatus = { power: "on" | "standby" | "off"; name: string | null; paired: boolean };
 
-type Stored = { token?: string };
+type Stored = { token?: string; lastApp?: StreamingApp; lastTitle?: string };
+type StreamingApp = "netflix" | "hbomax";
+
+const titleApp = (url: string): StreamingApp => (url.includes("netflix.com") ? "netflix" : "hbomax");
 
 async function readStored(): Promise<Stored> {
   const raw = await storage.readItems("tv");
   return raw && !Array.isArray(raw) ? (raw as Stored) : {};
 }
 
+async function visibleApp(): Promise<TvApp | null> {
+  const entries = Object.entries(TV_APPS) as [TvApp, string][];
+  const visible = await Promise.all(
+    entries.map(async ([, id]) => {
+      try {
+        const res = await fetch(`http://${HOST}:8001/api/v2/applications/${id}`, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(2000),
+        });
+        return ((await res.json()) as { visible?: boolean }).visible === true;
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return entries[visible.indexOf(true)]?.[0] ?? null;
+}
+
+/** Zapomni si zadnjo pretočno aplikacijo; naslov velja le, dokler se ne preklopi na drugo aplikacijo. */
+async function rememberApp(stored: Stored, app: TvApp | null): Promise<void> {
+  if ((app !== "netflix" && app !== "hbomax") || stored.lastApp === app) return;
+  const lastTitle = stored.lastTitle && titleApp(stored.lastTitle) === app ? stored.lastTitle : undefined;
+  await storage.writeItems("tv", { ...stored, lastApp: app, lastTitle });
+}
+
 /** Stanje: TV v stanju pripravljenosti še odgovarja na 8001 s PowerState "standby", ugasnjen pa ne. */
 export async function getStatus(): Promise<TvStatus> {
-  const { token } = await readStored();
+  const stored = await readStored();
+  const { token } = stored;
   try {
     const res = await fetch(`http://${HOST}:8001/api/v2/`, { cache: "no-store", signal: AbortSignal.timeout(2500) });
     const body: any = await res.json();
     const state = String(body?.device?.PowerState ?? "on").toLowerCase();
+    // PowerState lahko javlja "standby", čeprav je TV prižgan - vidna aplikacija je zanesljiv znak, da dela.
+    const app = await visibleApp();
+    await rememberApp(stored, app).catch(() => {});
+    const on = state === "on" || app !== null;
     return {
-      power: state === "on" ? "on" : "standby",
+      power: on ? "on" : "standby",
       name: body?.device?.name ? String(body.device.name).replace(/&quot;/g, '"') : null,
       paired: Boolean(token),
     };
@@ -125,6 +159,56 @@ export async function launchApp(app: TvApp): Promise<void> {
       params: { event: "ed.apps.launch", to: "host", data: { appId: TV_APPS[app], action_type: "DEEP_LINK" } },
     },
   ]);
+}
+
+/**
+ * Odpre naslov v aplikaciji iz spletnega URL-ja (iz kataloga lib/tvPicks.ts). Vrne false, če URL ni podprt.
+ * Obliki metaTag sta nepreverjeni: Samsung ju ne dokumentira. Če se naslov ne odpre, se odpre le aplikacija.
+ */
+export async function launchTitle(url: string): Promise<boolean> {
+  const netflix = url.match(/^https:\/\/www\.netflix\.com\/title\/(\d+)/);
+  const hbo = url.match(/^https:\/\/play\.hbomax\.com\/[a-z/-]+\/[0-9a-f-]{36}(?:\/[0-9a-f-]{36})?/);
+  if (!netflix && !hbo) return false;
+  const data = netflix
+    ? { appId: TV_APPS.netflix, metaTag: `m=https://www.netflix.com/title/${netflix[1]}&source_type=4` }
+    : { appId: TV_APPS.hbomax, metaTag: hbo![0] };
+  await launch(data.appId, "DEEP_LINK", data.metaTag);
+  await storage.writeItems("tv", { ...(await readStored()), lastApp: titleApp(url), lastTitle: url });
+  return true;
+}
+
+function launch(appId: string, actionType: "DEEP_LINK" | "NATIVE_LAUNCH", metaTag: string): Promise<void> {
+  return withRemote([
+    { method: "ms.channel.emit", params: { event: "ed.apps.launch", to: "host", data: { appId, action_type: actionType, metaTag } } },
+  ]);
+}
+
+/** Spotify s seznamom predvajanja; sprejme povezavo open.spotify.com ali spotify:playlist:ID. */
+export function launchSpotify(playlist: string): Promise<void> {
+  const id = playlist.match(/playlist[/:]([A-Za-z0-9]+)/)?.[1];
+  return launch(TV_APPS.spotify, "DEEP_LINK", id ? `spotify:playlist:${id}` : "");
+}
+
+export function launchBrowser(url: string): Promise<void> {
+  return launch("org.tizen.browser", "NATIVE_LAUNCH", url);
+}
+
+/**
+ * Nadaljuje zadnji naslov, poslan z dashboarda (odpre ga in potrdi privzeti gumb), sicer odpre zadnjo pretočno aplikacijo.
+ * TV ne sporoča, kaj se je nazadnje predvajalo, zato naslovov, zagnanih na samem TV-ju, ne poznamo.
+ */
+export async function resumeLast(): Promise<"title" | "app" | "none"> {
+  const { lastApp, lastTitle } = await readStored();
+  if (lastTitle && (await launchTitle(lastTitle))) {
+    await new Promise((r) => setTimeout(r, 8000));
+    await sendKey("KEY_ENTER");
+    return "title";
+  }
+  if (lastApp) {
+    await launchApp(lastApp);
+    return "app";
+  }
+  return "none";
 }
 
 /**

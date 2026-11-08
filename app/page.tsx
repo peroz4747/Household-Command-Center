@@ -1,11 +1,6 @@
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import GarageIcon from "@mui/icons-material/Garage";
 import LightbulbIcon from "@mui/icons-material/Lightbulb";
-import LightModeIcon from "@mui/icons-material/LightMode";
-import TimeToLeaveIcon from "@mui/icons-material/TimeToLeave";
-import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
-import RamenDiningIcon from "@mui/icons-material/RamenDining";
-import ModeNightIcon from "@mui/icons-material/ModeNight";
 import WeatherSummary from "./components/WeatherSummary";
 import CalendarTimeline from "./components/CalendarTimeline";
 import MealPlanner from "./components/MealPlanner";
@@ -43,14 +38,6 @@ export default async function Home() {
     { name: t("room.livingRoom"), temp: "24", status: t("room.status.cool"), color: "success" },
     { name: t("room.office"), temp: "24", status: t("room.status.idle"), color: "success" },
     { name: t("room.bedroom"), temp: "24", status: t("room.status.ok"), color: "success" },
-  ];
-
-  const shortcuts = [
-    { label: t("shortcuts.goodMorning"), icon: LightModeIcon },
-    { label: t("shortcuts.leaving"), icon: TimeToLeaveIcon },
-    { label: t("shortcuts.arriving"), icon: MeetingRoomIcon },
-    { label: t("shortcuts.dinner"), icon: RamenDiningIcon },
-    { label: t("shortcuts.sleep"), icon: ModeNightIcon },
   ];
 
   const networkAndEnergyItems = [
@@ -153,12 +140,7 @@ export default async function Home() {
           >
             <EnvironmentOverview rooms={rooms} />
 
-            <Shortcuts
-              shortcuts={shortcuts}
-              overline={t("shortcuts.overline")}
-              title={t("shortcuts.title")}
-              notConnected={t("common.notConnected")}
-            />
+            <Shortcuts />
 
             <NetworkAndEnergy
               items={networkAndEnergyItems}

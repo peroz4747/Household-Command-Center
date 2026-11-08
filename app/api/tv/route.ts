@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getStatus, launchApp, sendKey, togglePower, TV_APPS, TV_KEYS, type TvApp, type TvKey } from "../../../lib/tv";
+import { getStatus, launchApp, launchTitle, sendKey, togglePower, TV_APPS, TV_KEYS, type TvApp, type TvKey } from "../../../lib/tv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +24,10 @@ export async function POST(req: Request) {
     }
     if (body?.action === "app" && body.app in TV_APPS) {
       await launchApp(body.app as TvApp);
+      return NextResponse.json({ ok: true });
+    }
+    if (body?.action === "title" && typeof body.url === "string") {
+      if (!(await launchTitle(body.url))) return NextResponse.json({ error: "unsupported url" }, { status: 400 });
       return NextResponse.json({ ok: true });
     }
     return NextResponse.json({ error: "unknown action" }, { status: 400 });

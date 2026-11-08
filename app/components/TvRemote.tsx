@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Box, ButtonBase, Dialog, IconButton, Tooltip, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Dialog, IconButton, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import AddIcon from "@mui/icons-material/Add";
@@ -16,6 +16,7 @@ import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import InputIcon from "@mui/icons-material/Input";
 import CloseIcon from "@mui/icons-material/Close";
 import { useI18n } from "../i18n";
+import TvPicks from "./TvPicks";
 import type { TvStatus } from "../../lib/tv";
 
 const APPS: { id: string; label: string; bg: string; fg: string }[] = [
@@ -23,6 +24,7 @@ const APPS: { id: string; label: string; bg: string; fg: string }[] = [
   { id: "youtube", label: "YouTube", bg: "#ff0033", fg: "#ffffff" },
   { id: "hbomax", label: "HBO max", bg: "linear-gradient(135deg, #002be7 0%, #6b1fd1 100%)", fg: "#ffffff" },
   { id: "jellyfin", label: "Jellyfin", bg: "linear-gradient(135deg, #aa5cc3 0%, #00a4dc 100%)", fg: "#ffffff" },
+  { id: "spotify", label: "Spotify", bg: "#1db954", fg: "#000000" },
 ];
 
 const SURFACE = "rgba(148,163,184,0.10)";
@@ -142,6 +144,7 @@ export default function TvRemoteDialog({
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picksOpen, setPicksOpen] = useState(false);
 
   const on = status?.power === "on";
 
@@ -308,6 +311,11 @@ export default function TvRemoteDialog({
           </ButtonBase>
         ))}
       </Box>
+
+      <Button fullWidth variant="outlined" onClick={() => setPicksOpen(true)} sx={{ mt: 1.5, borderRadius: "12px", height: 44 }}>
+        {t("picks.open")}
+      </Button>
+      <TvPicks open={picksOpen} onClose={() => setPicksOpen(false)} tvOn={on} />
     </Dialog>
   );
 }

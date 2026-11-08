@@ -29,6 +29,7 @@ import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import type { CarLive, CarResponse, Tyres, TyreSeason } from "../../lib/car";
 import type { MessageKey, Translate } from "../../lib/i18n";
+import SettingsRemoteIcon from "@mui/icons-material/SettingsRemote";
 import FuelPrice from "./FuelPrice";
 import { useI18n } from "../i18n";
 
@@ -38,6 +39,7 @@ const MANUAL = {
   insurance: "2027-10-28",
   registration: "2027-10-28",
   vignette: "2027-05-04",
+  careConnect: "2027-11-02",
   // Servis: datum ali kilometri do servisa (kot jih je pokazal avto na dan kmLeftAsOf).
   service: { date: "2027-10-26", kmLeft: 13_800, kmLeftAsOf: "2026-11-02" },
 };
@@ -448,6 +450,7 @@ export default function CarStatus() {
                   now={now}
                   extra={t("car.serviceOrKm", { km: fmtKm(MANUAL.service.kmLeft, locale) })}
                 />
+                <Deadline icon={<SettingsRemoteIcon fontSize="small" />} label={t("car.careConnect")} date={parseDate(MANUAL.careConnect)} now={now} />
               </>
             )}
 
