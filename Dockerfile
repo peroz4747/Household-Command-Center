@@ -1,6 +1,9 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
+# ssh odjemalec za izklop/spanje računalnika z dashboarda
+RUN apk add --no-cache openssh-client
+
 # keep NODE_ENV=production, but explicitly install devDependencies for the build
 ENV NODE_ENV=production
 

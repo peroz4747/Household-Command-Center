@@ -159,7 +159,8 @@ async function dockerItems(): Promise<NetworkItem[]> {
       name,
       kind: "docker",
       status: c.State,
-      ips: published.length && DOCKER_HOST_IP ? [DOCKER_HOST_IP] : internalIps,
+      // network_mode: host nima objavljenih portov ne lastnega IP - dosegljiv je na IP-ju LXC kontejnerja.
+      ips: (published.length || "host" in (c.NetworkSettings?.Networks ?? {})) && DOCKER_HOST_IP ? [DOCKER_HOST_IP] : internalIps,
       ports,
       webUrl: webLinks[name] ?? (webPort && DOCKER_HOST_IP ? `http://${DOCKER_HOST_IP}:${webPort}/` : undefined),
       host: c.Image,
