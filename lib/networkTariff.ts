@@ -84,6 +84,14 @@ const partsFmt = new Intl.DateTimeFormat("en-GB", {
 const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 /** Lokalni deli časa in blok za začetek 15-minutnega intervala. */
+/** Trenutna tarifa za gospodinjstva: VT ob delavnikih 6-22, sicer MT; ter časovni blok omrežnine. */
+export function currentTariff(now: Date): { tariff: "VT" | "MT"; block: Block } {
+  const p = Object.fromEntries(partsFmt.formatToParts(now).map((x) => [x.type, x.value]));
+  const hour = Number(p.hour) % 24;
+  const working = isWorkingDay(Number(p.year), Number(p.month), Number(p.day), WEEKDAYS[p.weekday]);
+  return { tariff: working && hour >= 6 && hour < 22 ? "VT" : "MT", block: blockFor(Number(p.month), hour, working) };
+}
+
 export function intervalInfo(start: Date): { day: string; block: Block } {
   const p = Object.fromEntries(partsFmt.formatToParts(start).map((x) => [x.type, x.value]));
   const year = Number(p.year);

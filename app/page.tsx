@@ -1,10 +1,12 @@
-import ThermostatIcon from "@mui/icons-material/Thermostat";
 import GarageIcon from "@mui/icons-material/Garage";
 import LightbulbIcon from "@mui/icons-material/Lightbulb";
 import WeatherSummary from "./components/WeatherSummary";
 import CalendarTimeline from "./components/CalendarTimeline";
+import TravelHint from "./components/TravelHint";
+import ShoppingList from "./components/ShoppingList";
 import MealPlanner from "./components/MealPlanner";
-import ClientDashboard, { ClimateControl } from "./components/ClientDashboard";
+import ClientDashboard from "./components/ClientDashboard";
+import ClimateControl from "./components/ClimateControl";
 import ServerStatus from "./components/ServerStatus";
 import ServerPower from "./components/ServerPower";
 import { Box, Typography } from "@mui/material";
@@ -35,14 +37,13 @@ export default async function Home() {
   const rooms = [
     { name: t("room.hallway"), temp: "24", status: t("room.status.ok"), color: "success" },
     { name: t("room.kitchen"), temp: "24", status: t("room.status.idle"), color: "success" },
-    { name: t("room.livingRoom"), temp: "24", status: t("room.status.cool"), color: "success" },
+    { name: t("room.livingRoom"), temp: "24", status: t("room.status.cool"), color: "success", climate: true },
     { name: t("room.office"), temp: "24", status: t("room.status.idle"), color: "success" },
     { name: t("room.bedroom"), temp: "24", status: t("room.status.ok"), color: "success" },
   ];
 
   const networkAndEnergyItems = [
     { title: t("home.lights"), subtitle: t("home.lightsOff"), icon: LightbulbIcon, color: "success" },
-    { title: t("home.ac"), subtitle: t("home.acOn"), icon: ThermostatIcon, color: "primary" },
   ];
 
   return (
@@ -159,6 +160,11 @@ export default async function Home() {
           <Box sx={{ mt: 3 }}>
             <MealPlanner />
           </Box>
+
+          {/* NAKUPOVALNI SEZNAM */}
+          <Box sx={{ mt: 3 }}>
+            <ShoppingList />
+          </Box>
         </Box>
 
         {/* RIGHT SIDEBAR */}
@@ -172,6 +178,7 @@ export default async function Home() {
             overflow: "hidden",
           }}
         >
+          <TravelHint />
           <CalendarTimeline />
         </Box>
       </Box>

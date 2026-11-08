@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { useMemo } from "react";
 import { I18nProvider } from "./i18n";
+import PinGate from "./components/PinGate";
 import type { Lang } from "../lib/i18n";
 
 export default function Providers({ lang, children }: { lang: Lang; children: ReactNode }) {
@@ -47,7 +48,10 @@ export default function Providers({ lang, children }: { lang: Lang; children: Re
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <I18nProvider initialLang={lang}>{children}</I18nProvider>
+      <I18nProvider initialLang={lang}>
+        {children}
+        <PinGate />
+      </I18nProvider>
     </ThemeProvider>
   );
 }

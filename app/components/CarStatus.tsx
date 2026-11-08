@@ -33,16 +33,7 @@ import SettingsRemoteIcon from "@mui/icons-material/SettingsRemote";
 import FuelPrice from "./FuelPrice";
 import { useI18n } from "../i18n";
 
-// Ročni podatki: Škoda API jih ne ponuja (zavarovanje, registracija, vinjeta, servis).
-const MANUAL = {
-  model: "Kodiaq",
-  insurance: "2027-10-28",
-  registration: "2027-10-28",
-  vignette: "2027-05-04",
-  careConnect: "2027-11-02",
-  // Servis: datum ali kilometri do servisa (kot jih je pokazal avto na dan kmLeftAsOf).
-  service: { date: "2027-10-26", kmLeft: 13_800, kmLeftAsOf: "2026-11-02" },
-};
+import { CAR_MANUAL as MANUAL } from "../../lib/carManual";
 
 // Demo stanje, dokler v .env ni SKODA_API_KEY in SKODA_VIN.
 const DEMO = {

@@ -1,3 +1,4 @@
+import { requirePin } from "../../../lib/pin";
 import { NextResponse } from "next/server";
 import { runShortcut } from "../../../lib/shortcuts";
 import { SHORTCUT_STEPS, type ShortcutId } from "../../../lib/shortcutDefs";
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
 
 // { id: "morning" | "leaving" | "arriving" | "dinner" | "sleep" }
 export async function POST(req: Request) {
+  const denied = requirePin(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const id = body?.id;
   if (typeof id !== "string" || !Object.hasOwn(SHORTCUT_STEPS, id)) {

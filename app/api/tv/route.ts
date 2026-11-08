@@ -27,8 +27,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
     if (body?.action === "title" && typeof body.url === "string") {
-      if (!(await launchTitle(body.url))) return NextResponse.json({ error: "unsupported url" }, { status: 400 });
-      return NextResponse.json({ ok: true });
+      const opened = await launchTitle(body.url, String(body.title ?? ""));
+      if (!opened) return NextResponse.json({ error: "unsupported url" }, { status: 400 });
+      return NextResponse.json({ ok: true, opened });
     }
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   } catch (e) {

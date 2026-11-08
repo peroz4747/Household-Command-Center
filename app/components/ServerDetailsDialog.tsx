@@ -1,5 +1,6 @@
 "use client";
 
+import ServerBackups from "./ServerBackups";
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -511,6 +512,7 @@ export default function ServerDetailsDialog({ open, onClose }: { open: boolean; 
                 </Section>
               </Box>
 
+              <ServerBackups />
               <HealthCheckPanel />
 
               {/* Tasks */}

@@ -57,10 +57,11 @@ export default function TvPicks({ open, onClose, tvOn }: { open: boolean; onClos
       const res = await fetch("/api/tv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "title", url: item.url }),
+        body: JSON.stringify({ action: "title", url: item.url, title: item.title }),
       });
       if (!res.ok) throw new Error();
-      setMessage({ ok: true, text: `${tr("picks.opened")}: ${item.title}` });
+      const { opened } = (await res.json()) as { opened?: string };
+      setMessage({ ok: true, text: `${tr(opened === "app" ? "picks.openedApp" : "picks.opened")}: ${item.title}` });
     } catch {
       setMessage({ ok: false, text: tr("tv.err.unreachable") });
     } finally {

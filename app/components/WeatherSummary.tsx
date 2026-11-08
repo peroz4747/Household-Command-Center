@@ -1,5 +1,6 @@
 "use client";
 
+import WeatherWarnings from "./WeatherWarnings";
 import { useEffect, useState } from "react";
 import { Box, Button, Card, CardContent, CircularProgress, Typography, Divider } from "@mui/material";
 import WbSunnyIcon from "@mui/icons-material/WbSunny";
@@ -74,6 +75,7 @@ export default function WeatherSummary() {
   return (
     <Card sx={{ minHeight: 205, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
       <CardContent>
+        <WeatherWarnings />
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Box>
             <Typography variant="subtitle2" color="secondary">

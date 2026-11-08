@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Box, Typography, Link, List, ListItem, IconButton } from "@mui/material";
+import NewsTop from "./NewsTop";
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import { useI18n } from "../i18n";
@@ -86,7 +87,10 @@ export default function NewsFeed() {
     <Box sx={{ width: "100%" }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
         <Typography variant="h6">{t("news.title")}</Typography>
-        <Typography variant="caption" color="text.secondary">{t("news.source")}</Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">{t("news.source")}</Typography>
+          <NewsTop />
+        </Box>
       </Box>
 
       {loading ? (

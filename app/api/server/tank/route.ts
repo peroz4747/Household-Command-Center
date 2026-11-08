@@ -1,3 +1,4 @@
+import { requirePin } from "../../../../lib/pin";
 import { NextResponse } from "next/server";
 import { getTankControl, requestTank } from "../../../../lib/tankControl";
 
@@ -10,6 +11,8 @@ export async function GET() {
 
 // { action: "export" } = varen izklop, { action: "import" } = vklop
 export async function POST(req: Request) {
+  const denied = requirePin(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const action = body?.action;
   if (action !== "export" && action !== "import") return NextResponse.json({ error: "invalid action" }, { status: 400 });

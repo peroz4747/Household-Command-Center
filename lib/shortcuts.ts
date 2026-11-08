@@ -1,5 +1,6 @@
 import { getPcStatus, runPcAction } from "./pcControl";
-import { getStatus, launchApp, launchBrowser, launchSpotify, resumeLast, togglePower } from "./tv";
+import { getStatus, launchApp, launchBrowser, resumeLast, sendKey, togglePower } from "./tv";
+import { playPlaylistOnTv, spotifyConnected } from "./spotify";
 import { SHORTCUT_STEPS, type ShortcutId, type StepKey, type StepResult } from "./shortcutDefs";
 
 type Outcome = { status?: StepResult["status"]; note?: string } | void;
@@ -52,12 +53,22 @@ const STEP_RUNNERS: Record<StepKey, () => Promise<Outcome>> = {
   // Dashboard teče na strežniku: če se je dejanje sprožilo, strežnik že dela.
   server: async () => ({ status: "skipped", note: "serverRunning" }),
   spotify: async () => {
-    const playlist = process.env.TV_MORNING_PLAYLIST;
-    if (playlist) return void (await retry(() => launchSpotify(playlist)));
     await retry(() => launchApp("spotify"));
-    return { note: "noPlaylist" };
+    const playlist = process.env.TV_MORNING_PLAYLIST;
+    if (playlist && (await spotifyConnected())) {
+      try {
+        await playPlaylistOnTv(playlist);
+        return;
+      } catch (e) {
+        return { status: "error", note: `spotify-${(e as Error).message}` };
+      }
+    }
+    // Brez povezave s Spotifyjem lahko le nadaljujemo z zadnjim predvajanjem.
+    await sleep(4000);
+    await sendKey("KEY_PLAY");
+    return { note: "appOnly" };
   },
-  browser: () => retry(() => launchBrowser(process.env.TV_BROWSER_URL ?? "https://dashboard.home/")),
+  browser: () => retry(() => launchBrowser(), 2, 3000),
   resume: async () => {
     let result = "none";
     await retry(async () => {

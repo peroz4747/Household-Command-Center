@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, Card, CardContent, Chip, LinearProgress, Tooltip, Typography } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
+import TariffChip from "./TariffChip";
 import { useI18n } from "../i18n";
 import { billingPeriod } from "../../lib/billing";
 import type { ElectricityResponse } from "../../lib/electricity";
@@ -254,6 +255,7 @@ export default function UtilityUsage() {
           {!live && electricity && (
             <Chip label={t("common.demo")} size="small" variant="outlined" sx={{ height: 20, fontSize: 11, color: "text.secondary" }} />
           )}
+          <TariffChip />
         </Box>
 
         {period && elValues && (

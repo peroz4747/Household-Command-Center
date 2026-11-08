@@ -1,3 +1,4 @@
+import { requirePin } from "../../../lib/pin";
 import { NextResponse } from "next/server";
 import { getPcStatus, runPcAction, type PcAction } from "../../../lib/pcControl";
 
@@ -15,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = requirePin(req);
+  if (denied) return denied;
   // Zaščita pred tujimi spletnimi stranmi (CSRF): zahteva mora priti z istega izvora.
   const origin = req.headers.get("origin");
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");

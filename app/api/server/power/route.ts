@@ -1,3 +1,4 @@
+import { requirePin } from "../../../../lib/pin";
 import { NextResponse } from "next/server";
 import { getPower, requestPower, saveSchedule, validateSchedule } from "../../../../lib/serverPower";
 
@@ -10,6 +11,8 @@ export async function GET() {
 
 // { action: "shutdown" | "reboot" }
 export async function POST(req: Request) {
+  const denied = requirePin(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const action = body?.action;
   if (action !== "shutdown" && action !== "reboot") return NextResponse.json({ error: "invalid action" }, { status: 400 });
@@ -23,6 +26,8 @@ export async function POST(req: Request) {
 
 // Urnik: { enabled, days: [0..6], on: "HH:MM", off: "HH:MM" }
 export async function PUT(req: Request) {
+  const denied = requirePin(req);
+  if (denied) return denied;
   const schedule = validateSchedule(await req.json().catch(() => null));
   if (!schedule) return NextResponse.json({ error: "invalid schedule" }, { status: 400 });
   try {
