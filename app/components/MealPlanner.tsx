@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  ButtonBase,
   Box,
   Card,
   CardContent,
@@ -21,6 +22,7 @@ import {
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CasinoOutlinedIcon from "@mui/icons-material/CasinoOutlined";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
@@ -30,6 +32,24 @@ import RestaurantIcon from "@mui/icons-material/Restaurant";
 import { useI18n } from "../i18n";
 import { mealIdeas } from "../../lib/i18n/mealIdeas";
 import { veganTop100 } from "../../lib/i18n/veganTop100";
+import { STAPLES, stapleDishes, type Staple } from "../../lib/i18n/stapleDishes";
+
+const STAPLE_EMOJI: Record<Staple, string> = {
+  potato: "🥔",
+  rice: "🍚",
+  pasta: "🍝",
+  tortilla: "🌮",
+  bread: "🥖",
+  couscous: "🥣",
+  polenta: "🌽",
+  buckwheat: "🌾",
+  quinoa: "🥗",
+  lentils: "🍲",
+  chickpeas: "🧆",
+  beans: "🫘",
+  tofu: "🍱",
+  sweetpotato: "🍠",
+};
 
 type MealItem = { id?: string; date: string; meal: string };
 
@@ -87,6 +107,8 @@ export default function MealPlanner() {
   const [error, setError] = useState<"load" | "save" | null>(null);
   // Dan, za katerega je odprt izbirnik "100 najboljših veganskih".
   const [picker, setPicker] = useState<string | null>(null);
+  // Korak v izbirniku: glavni meni, izbira glavne hrane ali seznam jedi.
+  const [pickerView, setPickerView] = useState<"menu" | "staples" | "top100" | Staple>("menu");
   const [query, setQuery] = useState("");
   const { t, lang, locale } = useI18n();
   // Prepreči dvojno shranjevanje (Enter sproži save, nato še blur).
@@ -166,6 +188,7 @@ export default function MealPlanner() {
     skipBlur.current = true;
     setEditing(null);
     setQuery("");
+    setPickerView("menu");
     setPicker(date);
   };
 
@@ -176,8 +199,16 @@ export default function MealPlanner() {
 
   // Iskanje ne loči velikih črk in šumnikov ("cicerika" najde "Čičerika").
   const normalize = (v: string) => v.toLocaleLowerCase(locale).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const top100 = veganTop100[lang].map((dish, i) => ({ dish, rank: i + 1 }));
-  const filtered = query.trim() ? top100.filter((d) => normalize(d.dish).includes(normalize(query.trim()))) : top100;
+  const tr = t as unknown as (key: string) => string;
+  const isDishList = pickerView !== "menu" && pickerView !== "staples";
+  const dishes = (pickerView === "top100" ? veganTop100[lang] : isDishList ? stapleDishes[pickerView as Staple][lang] : []).map((dish, i) => ({ dish, rank: i + 1 }));
+  const filtered = query.trim() ? dishes.filter((d) => normalize(d.dish).includes(normalize(query.trim()))) : dishes;
+  const pickerTitle =
+    pickerView === "menu" ? tr("meals.pick") : pickerView === "staples" ? tr("meals.planMeal") : pickerView === "top100" ? tr("meals.top100Title") : tr(`meals.staple.${pickerView}`);
+  const pickerBack = () => {
+    setQuery("");
+    setPickerView(pickerView === "staples" || pickerView === "top100" ? "menu" : "staples");
+  };
   const pickerCurrent = picker ? meals.get(picker)?.meal : undefined;
 
   const planned = weeks ? weeks.flat().filter((d) => !d.isPast && meals.get(d.date)?.meal).length : 0;
@@ -328,11 +359,11 @@ export default function MealPlanner() {
                                       <CasinoOutlinedIcon sx={{ fontSize: 18 }} />
                                     </IconButton>
                                   </Tooltip>
-                                  <Tooltip title={t("meals.top100")}>
+                                  <Tooltip title={tr("meals.pick")}>
                                     <IconButton
                                       onMouseDown={(e) => e.preventDefault()}
                                       onClick={() => openPicker(day.date)}
-                                      aria-label={t("meals.top100")}
+                                      aria-label={tr("meals.pick")}
                                       sx={{
                                         width: 28,
                                         height: 28,
@@ -390,9 +421,14 @@ export default function MealPlanner() {
 
       <Dialog open={picker !== null} onClose={() => setPicker(null)} fullWidth maxWidth="xs" scroll="paper">
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pr: 1.5, pb: 1 }}>
+          {pickerView !== "menu" && (
+            <IconButton onClick={pickerBack} aria-label={tr("meals.back")} size="small">
+              <ArrowBackIcon fontSize="small" />
+            </IconButton>
+          )}
           <Box sx={{ flex: 1 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
-              {t("meals.top100Title")}
+              {pickerTitle}
             </Typography>
             {picker && weeks && (
               <Typography variant="caption" color="text.secondary">
@@ -407,6 +443,70 @@ export default function MealPlanner() {
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
+        {!isDishList && (
+          <DialogContent dividers sx={{ p: 2 }}>
+            {pickerView === "menu" ? (
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+                {[
+                  { view: "top100" as const, Icon: MenuBookOutlinedIcon, title: tr("meals.cardTop100"), hint: tr("meals.cardTop100Hint") },
+                  { view: "staples" as const, Icon: RestaurantIcon, title: tr("meals.planMeal"), hint: tr("meals.planMealHint") },
+                ].map(({ view, Icon, title, hint }) => (
+                  <ButtonBase
+                    key={view}
+                    onClick={() => setPickerView(view)}
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 1,
+                      p: 2,
+                      minHeight: 170,
+                      textAlign: "center",
+                      borderRadius: 3,
+                      border: "1px solid rgba(148,163,184,0.2)",
+                      bgcolor: "rgba(148,163,184,0.06)",
+                      transition: "background-color .15s, border-color .15s",
+                      "&:hover": { bgcolor: "rgba(91,140,255,0.14)", borderColor: "primary.main" },
+                    }}
+                  >
+                    <Box sx={{ width: 52, height: 52, borderRadius: "50%", display: "grid", placeItems: "center", color: "primary.main", bgcolor: "rgba(91,140,255,0.16)" }}>
+                      <Icon />
+                    </Box>
+                    <Typography sx={{ fontWeight: 700, lineHeight: 1.25, fontSize: 15 }}>{title}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {hint}
+                    </Typography>
+                  </ButtonBase>
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+                {STAPLES.map((staple) => (
+                  <ButtonBase
+                    key={staple}
+                    onClick={() => setPickerView(staple)}
+                    sx={{
+                      display: "flex",
+                      justifyContent: "flex-start",
+                      gap: 1.25,
+                      p: 1.25,
+                      borderRadius: 2,
+                      border: "1px solid rgba(148,163,184,0.18)",
+                      "&:hover": { bgcolor: "rgba(91,140,255,0.14)", borderColor: "primary.main" },
+                    }}
+                  >
+                    <Box component="span" sx={{ fontSize: 22, lineHeight: 1 }}>
+                      {STAPLE_EMOJI[staple]}
+                    </Box>
+                    <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{tr(`meals.staple.${staple}`)}</Typography>
+                  </ButtonBase>
+                ))}
+              </Box>
+            )}
+          </DialogContent>
+        )}
+        {isDishList && (
+          <>
         <Box sx={{ px: 3, pb: 1.5 }}>
           <TextField
             autoFocus
@@ -456,6 +556,8 @@ export default function MealPlanner() {
             </List>
           )}
         </DialogContent>
+          </>
+        )}
       </Dialog>
     </Card>
   );
