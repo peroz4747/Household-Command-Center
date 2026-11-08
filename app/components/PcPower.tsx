@@ -5,20 +5,24 @@ import LaptopIcon from "@mui/icons-material/Laptop";
 import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
 import BedtimeIcon from "@mui/icons-material/Bedtime";
 import {
+  Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Snackbar,
   Alert,
+  Tooltip,
+  Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import type { PcAction, PcStatus } from "../../lib/pcControl";
 import { useI18n } from "../i18n";
 
@@ -28,6 +32,7 @@ const PENDING_TIMEOUT_MS = 3 * 60_000;
 
 type Pending = { action: PcAction; since: number } | null;
 
+/** Vrstica z računalnikom v kartici Omrežje in energija: stanje + gumb, ki odpre meni. */
 export default function PcPower() {
   const { t } = useI18n();
   const [status, setStatus] = useState<PcStatus | null>(null);
@@ -84,27 +89,45 @@ export default function PcPower() {
 
   if (!status?.configured) return null;
 
-  let label: string;
-  let color: "success" | "default" | "warning";
-  if (pending) {
-    label = t(pending.action === "wake" ? "pc.waking" : pending.action === "suspend" ? "pc.suspending" : "pc.shuttingDown");
-    color = "warning";
-  } else {
-    label = t(status.online ? "pc.on" : "pc.off");
-    color = status.online ? "success" : "default";
-  }
+  const label = pending
+    ? t(pending.action === "wake" ? "pc.waking" : pending.action === "suspend" ? "pc.suspending" : "pc.shuttingDown")
+    : t(status.online ? "pc.on" : "pc.off");
 
   return (
     <>
-      <Chip
-        icon={pending ? <CircularProgress size={14} color="inherit" /> : <LaptopIcon />}
-        label={`${status.name} · ${label}`}
-        color={color}
-        variant={status.online || pending ? "filled" : "outlined"}
-        title={t("pc.chipTitle")}
-        onClick={(e) => setAnchor(e.currentTarget)}
-        clickable
-      />
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          bgcolor: "rgba(148,163,184,0.05)",
+          p: 2,
+          borderRadius: 3,
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+          {pending ? <CircularProgress size={24} color="warning" /> : <LaptopIcon color={status.online ? "success" : "disabled"} />}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700 }}>{status.name}</Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {label}
+            </Typography>
+          </Box>
+        </Box>
+        <Tooltip title={t("pc.chipTitle")}>
+          <IconButton
+            onClick={(e) => setAnchor(e.currentTarget)}
+            aria-label={t("pc.chipTitle")}
+            color="primary"
+            sx={(theme) => ({
+              bgcolor: alpha(theme.palette.primary.main, 0.12),
+              "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.24) },
+            })}
+          >
+            <PowerSettingsNewIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
         <MenuItem disabled={!status.canWake || status.online || Boolean(pending)} onClick={() => void run("wake")}>

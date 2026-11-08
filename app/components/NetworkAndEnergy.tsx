@@ -1,6 +1,7 @@
 import { Box, Card, CardContent, Typography } from "@mui/material";
 import InternetStatus from "./InternetStatus";
 import TvStatusRow from "./TvStatusRow";
+import PcPower from "./PcPower";
 import { Dimmed, NotConnectedChip } from "./NotConnected";
 
 type Item = { title: string; subtitle: string; icon: React.ElementType; color: string };
@@ -31,6 +32,7 @@ export default function NetworkAndEnergy({
           {/* Vrstici s pravimi podatki. */}
           <InternetStatus />
           <TvStatusRow />
+          <PcPower />
 
           {/* Luči in klima še niso povezane z ničemer. */}
           <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 0.5, mb: -1 }}>
