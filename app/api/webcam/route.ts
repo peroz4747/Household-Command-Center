@@ -19,7 +19,8 @@ export async function GET(req: Request) {
       signal: AbortSignal.timeout(10_000),
     });
     const text = await res.text();
-    const data = JSON.parse(text.slice(text.indexOf("(") + 1, text.lastIndexOf(")")));
+    // JSONP: streamData({...}, 200);
+    const data = JSON.parse(text.slice(text.indexOf("(") + 1, text.lastIndexOf("}") + 1));
     const hls = String(data?.hls?.url ?? "");
     if (!/^https:\/\/[\w.-]+\.whatsupcams\.com\/.+\.m3u8$/.test(hls)) throw new Error("no stream");
     const entry = { at: Date.now(), hls, snapshot: data?.snapshot ? `${data.snapshot}.jpg` : null };
