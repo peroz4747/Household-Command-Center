@@ -84,12 +84,14 @@ export default function WeatherSummary() {
             <Typography variant="subtitle2" color="secondary">
               {t("weather.overline")}
             </Typography>
-            <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
-              Maribor
-            </Typography>
-            <Button size="small" variant="outlined" color="secondary" startIcon={<RadarIcon />} onClick={() => setRadarOpen(true)} sx={{ mt: 1 }}>
-              {t("radar.open")}
-            </Button>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                Maribor
+              </Typography>
+              <Button size="small" variant="outlined" color="secondary" startIcon={<RadarIcon />} onClick={() => setRadarOpen(true)}>
+                {t("radar.open")}
+              </Button>
+            </Box>
           </Box>
           {loading ? <CircularProgress size={32} color="inherit" /> : weather ? getWeatherIcon(weather.current.weathercode) : null}
         </Box>

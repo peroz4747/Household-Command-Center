@@ -693,6 +693,23 @@ const sl = {
   "camera.timelapse": "Zadnja ura",
   "camera.timelapseAt": "Časovni zamik · {time} ({n}/{total})",
   "camera.backLive": "V živo",
+  "markets.overline": "Borza",
+  "markets.title": "Pregled trgov",
+  "markets.source": "Yahoo Finance, z zamikom borze",
+  "markets.updated": "zadnja cena {time}",
+  "markets.range.1d": "1 dan",
+  "markets.range.1mo": "1 mesec",
+  "markets.range.1y": "1 leto",
+  "markets.vs.1d": "glede na včerajšnje zaprtje",
+  "markets.vs.1mo": "v zadnjem mesecu",
+  "markets.vs.1y": "v zadnjem letu",
+  "markets.open": "odprto",
+  "markets.closed": "zaprto",
+  "markets.openTip": "Borza trenutno trguje",
+  "markets.closedTip": "Borza je zaprta; prikazana je zadnja cena",
+  "markets.error": "Podatkov o borzi ni bilo mogoče naložiti",
+  "markets.name.GC=F": "Zlato",
+  "markets.name.BZ=F": "Nafta Brent",
 } as const;
 
 export type MessageKey = keyof typeof sl;

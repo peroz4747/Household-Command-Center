@@ -40,7 +40,7 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
         <Chip label={real ? t("camera.live") : t("camera.online")} color={real ? "error" : "success"} />
       </Box>
       <Box sx={{ flex: 1, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", display: "grid", placeItems: "center", p: 2 }}>
-        <Box sx={{ width: "100%", height: real ? "auto" : 260, aspectRatio: real ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
+        <Box sx={{ width: "100%", aspectRatio: "16 / 10", borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
           {zone?.stream ? (
             <LiveStream key={zone.stream} name={zone.stream} title={zone.source ?? zone.label} />
           ) : zone?.snapshot ? (

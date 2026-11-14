@@ -693,6 +693,23 @@ const de: Record<MessageKey, string> = {
   "camera.timelapse": "Letzte Stunde",
   "camera.timelapseAt": "Zeitraffer · {time} ({n}/{total})",
   "camera.backLive": "Live",
+  "markets.overline": "Börse",
+  "markets.title": "Marktüberblick",
+  "markets.source": "Yahoo Finance, börsenverzögert",
+  "markets.updated": "letzter Kurs {time}",
+  "markets.range.1d": "1 Tag",
+  "markets.range.1mo": "1 Monat",
+  "markets.range.1y": "1 Jahr",
+  "markets.vs.1d": "ggü. Vortagesschluss",
+  "markets.vs.1mo": "im letzten Monat",
+  "markets.vs.1y": "im letzten Jahr",
+  "markets.open": "offen",
+  "markets.closed": "geschlossen",
+  "markets.openTip": "Börse handelt gerade",
+  "markets.closedTip": "Börse geschlossen; letzter Kurs",
+  "markets.error": "Börsendaten konnten nicht geladen werden",
+  "markets.name.GC=F": "Gold",
+  "markets.name.BZ=F": "Brent-Öl",
 };
 
 export default de;
