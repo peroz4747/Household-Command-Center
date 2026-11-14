@@ -3,7 +3,7 @@
 import storage from "./storage";
 
 const API = "https://goriva.si/api/v1/search/";
-const FUEL = "95";
+export const FUEL = "95";
 const RADIUS_M = Number(process.env.FUEL_RADIUS_M ?? 5000);
 const REFRESH_MS = 60 * 60_000;
 const MAX_PAGES = 5;

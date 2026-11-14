@@ -30,7 +30,9 @@ import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import type { CarLive, CarResponse, Tyres, TyreSeason } from "../../lib/car";
 import type { MessageKey, Translate } from "../../lib/i18n";
 import SettingsRemoteIcon from "@mui/icons-material/SettingsRemote";
+import RouteIcon from "@mui/icons-material/Route";
 import FuelPrice from "./FuelPrice";
+import TripPlanner from "./TripPlanner";
 import { useI18n } from "../i18n";
 
 import { CAR_MANUAL as MANUAL } from "../../lib/carManual";
@@ -188,6 +190,7 @@ export default function CarStatus() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [tripOpen, setTripOpen] = useState(false);
 
   // Na Škoda API gremo samo ob kliku (omejitev 20 klicev/uro); GET vrne zadnje shranjene podatke.
   const refresh = async () => {
@@ -297,7 +300,10 @@ export default function CarStatus() {
               </Typography>
             </Typography>
           </Box>
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+            <Button size="small" variant="outlined" color="secondary" startIcon={<RouteIcon />} onClick={() => setTripOpen(true)}>
+              {t("trip.open")}
+            </Button>
             {d.locked !== null && (
               <Chip
                 size="small"
@@ -526,6 +532,18 @@ export default function CarStatus() {
           </Box>
         </Box>
       </CardContent>
+      {tripOpen && (
+        <TripPlanner
+          open
+          onClose={() => setTripOpen(false)}
+          car={{
+            fuelPercent: car?.live?.fuelPercent ?? null,
+            lat: car?.live?.parking.lat ?? null,
+            lon: car?.live?.parking.lon ?? null,
+            address: car?.live?.parking.address ?? null,
+          }}
+        />
+      )}
     </Card>
   );
 }

@@ -1,6 +1,7 @@
 // Ročni podatki o avtu: Škoda API jih ne ponuja (zavarovanje, registracija, vinjeta, servis, Care Connect).
 export const CAR_MANUAL = {
   model: "Kodiaq",
+  tankLiters: 58,
   insurance: "2027-10-28",
   registration: "2027-10-28",
   vignette: "2027-05-04",
