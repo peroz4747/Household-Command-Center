@@ -4,6 +4,7 @@ import WeatherSummary from "./components/WeatherSummary";
 import CalendarTimeline from "./components/CalendarTimeline";
 import TravelHint from "./components/TravelHint";
 import MarketOverview from "./components/MarketOverview";
+import WorldEconomies from "./components/WorldEconomies";
 import MealPlanner from "./components/MealPlanner";
 import ClientDashboard from "./components/ClientDashboard";
 import ClimateControl from "./components/ClimateControl";
@@ -192,6 +193,11 @@ export default async function Home() {
       {/* BORZA (cela širina) */}
       <Box sx={{ mt: 3 }}>
         <MarketOverview />
+      </Box>
+
+      {/* GOSPODARSTVA SVETA (cela širina) */}
+      <Box sx={{ mt: 3 }}>
+        <WorldEconomies />
       </Box>
 
       {/* FULL WIDTH NEWS SECTION */}
