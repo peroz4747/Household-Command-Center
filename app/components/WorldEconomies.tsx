@@ -43,7 +43,6 @@ const REGIONS = [
   "Sub-Saharan Africa",
 ];
 
-const flag = (iso2: string) => String.fromCodePoint(...[...iso2.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 
 function Pct({ v, title }: { v: number | null; title?: string }) {
   const { locale } = useI18n();
@@ -133,9 +132,8 @@ export default function WorldEconomies() {
       <TableCell sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{ranked.gdp.get(e.iso2) ?? "–"}</TableCell>
       <TableCell>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Box component="span" sx={{ fontSize: 18, lineHeight: 1 }}>
-            {flag(e.iso2)}
-          </Box>
+          {/* Slike namesto emoji: Windows emoji zastav ne prikaže. */}
+          <Box component="img" src={`https://flagcdn.com/w40/${e.iso2.toLowerCase()}.png`} alt="" loading="lazy" sx={{ width: 20, height: 14, objectFit: "cover", borderRadius: "2px", flexShrink: 0, boxShadow: "0 0 0 1px rgba(148,163,184,0.25)" }} />
           <Typography variant="body2" sx={{ fontWeight: e.iso2 === HOME ? 700 : 500 }}>
             {nameOf(e)}
           </Typography>
