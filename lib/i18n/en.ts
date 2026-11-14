@@ -607,14 +607,6 @@ const en: Record<MessageKey, string> = {
   "fuel.alert.none": "No price alert set",
   "fuel.alert.set": "Alert when price ≤ €{price}",
   "fuel.alert.off": "Turn off",
-  "billing.lastYear": "{n}% vs the same days last year ({kwh} kWh; whole month last year {total} kWh)",
-  "billing.cheap.now": "Power is cheapest now – run the machines",
-  "billing.cheap.nowDetail": "Valid {window}. Avoid running several big appliances at once (power charge).",
-  "billing.cheap.today": "Washer/dishwasher: cheapest today {window}",
-  "billing.cheap.tomorrow": "Washer/dishwasher: cheapest tomorrow {window}",
-  "billing.cheap.saving": "A kWh is then about {n}% cheaper than now.",
-  "billing.cheap.tooltip": "Energy + network fee incl. VAT. Now €{now}/kWh, cheapest €{cheap}/kWh. Cheapest hours today: {today}.",
-  "billing.cheap.allDay": "Low tariff all day – timing doesn't matter.",
   "radar.open": "Radar",
   "radar.title": "Weather radar",
   "radar.tabMap": "Maribor (last 2 hours)",
@@ -696,6 +688,7 @@ const en: Record<MessageKey, string> = {
   "kiosk.cheapUntil": "{window}",
   "kiosk.cheapNext": "Cheapest electricity",
   "kiosk.allDay": "Low tariff all day",
+  "camera.reconnecting": "Reconnecting camera …",
 };
 
 export default en;

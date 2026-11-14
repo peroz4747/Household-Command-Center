@@ -607,14 +607,6 @@ const de: Record<MessageKey, string> = {
   "fuel.alert.none": "Keine Preisbenachrichtigung",
   "fuel.alert.set": "Benachrichtigung bei Preis ≤ {price} €",
   "fuel.alert.off": "Ausschalten",
-  "billing.lastYear": "{n} % gegenüber denselben Tagen im Vorjahr ({kwh} kWh; ganzer Monat Vorjahr {total} kWh)",
-  "billing.cheap.now": "Strom ist jetzt am günstigsten – Geräte einschalten",
-  "billing.cheap.nowDetail": "Gilt {window}. Nicht mehrere große Verbraucher gleichzeitig (Leistung).",
-  "billing.cheap.today": "Wasch-/Spülmaschine: am günstigsten heute {window}",
-  "billing.cheap.tomorrow": "Wasch-/Spülmaschine: am günstigsten morgen {window}",
-  "billing.cheap.saving": "Eine kWh ist dann etwa {n} % günstiger als jetzt.",
-  "billing.cheap.tooltip": "Energie + Netzentgelt inkl. MwSt. Jetzt {now} €/kWh, am günstigsten {cheap} €/kWh. Günstigste Stunden heute: {today}.",
-  "billing.cheap.allDay": "Ganztägig Niedertarif – Uhrzeit egal.",
   "radar.open": "Radar",
   "radar.title": "Wetterradar",
   "radar.tabMap": "Maribor (letzte 2 Stunden)",
@@ -696,6 +688,7 @@ const de: Record<MessageKey, string> = {
   "kiosk.cheapUntil": "{window}",
   "kiosk.cheapNext": "Günstigster Strom",
   "kiosk.allDay": "Ganztägig Niedertarif",
+  "camera.reconnecting": "Kamera wird verbunden …",
 };
 
 export default de;

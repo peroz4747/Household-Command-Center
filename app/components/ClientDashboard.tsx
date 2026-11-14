@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Button, Card, CardContent, Chip, Typography, Divider } from "@mui/material";
-import ThermostatIcon from "@mui/icons-material/Thermostat";
+import { Box, Button, Card, Chip, Typography, Divider } from "@mui/material";
 import { useI18n } from "../i18n";
-import { Dimmed, NotConnectedChip } from "./NotConnected";
+import LiveStream from "./LiveStream";
 
 interface CameraZone {
   label: string;
   active: boolean;
-  embedUrl?: string; // javna spletna kamera (iframe); brez tega je nadomestna slika
+  stream?: string; // ime javne spletne kamere WhatsUpCams (HLS); brez tega je nadomestna slika
   source?: string;
 }
 
@@ -35,21 +34,12 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
             {t("camera.view", { name: selectedCamera })}
           </Typography>
         </Box>
-        <Chip label={zone?.embedUrl ? t("camera.live") : t("camera.online")} color={zone?.embedUrl ? "error" : "success"} />
+        <Chip label={zone?.stream ? t("camera.live") : t("camera.online")} color={zone?.stream ? "error" : "success"} />
       </Box>
       <Box sx={{ flex: 1, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", display: "grid", placeItems: "center", p: 2 }}>
-        <Box sx={{ width: "100%", height: zone?.embedUrl ? "auto" : 260, aspectRatio: zone?.embedUrl ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
-          {zone?.embedUrl ? (
-            <Box
-              component="iframe"
-              key={zone.embedUrl}
-              src={zone.embedUrl}
-              title={zone.source ?? zone.label}
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-            />
+        <Box sx={{ width: "100%", height: zone?.stream ? "auto" : 260, aspectRatio: zone?.stream ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
+          {zone?.stream ? (
+            <LiveStream key={zone.stream} name={zone.stream} title={zone.source ?? zone.label} />
           ) : (
             <Typography variant="h6" color="text.secondary" sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
               {t("camera.placeholder", { name: selectedCamera })}

@@ -44,8 +44,6 @@ export type ElectricityData = {
   bill: BillBreakdown | null; // postavke računa doslej
   projectedBill: BillBreakdown | null;
   byBlock: Partial<Record<Block, number>>; // kWh po časovnih blokih
-  lastYearKwh: number | null; // isti mesec lani, cel mesec
-  lastYearSameDaysKwh: number | null; // isti mesec lani, enako število dni kot letos s podatki
   fetchedAt: string;
 };
 
@@ -321,43 +319,6 @@ async function fetchElectricity(stored: Stored): Promise<ElectricityData> {
       lastPeriodCostEur = computeBill({ vtKwh: vt.last, mtKwh: mt.last, byBlock: prevBlocks, days })?.total ?? null;
     }
   }
-  // Isti mesec lani: stanja na začetek meseca, na isti dan kot letos in na konec meseca.
-  let lastYearKwh: number | null = null;
-  let lastYearSameDaysKwh: number | null = null;
-  if (daysWithData > 0) {
-    try {
-      const lyStart = new Date(period.start.getFullYear() - 1, period.start.getMonth(), 1);
-      const lySame = new Date(lyStart.getFullYear(), lyStart.getMonth(), 1 + daysWithData);
-      const lyNext = new Date(lyStart.getFullYear(), lyStart.getMonth() + 1, 1);
-      const plus = (d: Date, n: number) => toDateString(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
-      await fetchRange(lyStart, plus(lyNext, 1)); // cel mesec v enem klicu (≤ 33 dni)
-      const codes = parts.length ? [registers.VT, registers.MT] : [registers.ET];
-      // Vsota dnevnih prirastkov: ob menjavi števca stanje pade, ta dan preskočimo (izgubimo le en dan porabe).
-      const between = (from: Date, to: Date) => {
-        const a = toDateString(from);
-        const b = toDateString(to);
-        let total = 0;
-        let days = 0;
-        for (const code of codes) {
-          const list = [...new Map((code ? (byRegister.get(code) ?? []) : []).map((r) => [r.day, r])).values()]
-            .filter((r) => r.day >= a && r.day <= b)
-            .sort((x, y) => x.day.localeCompare(y.day));
-          for (let i = 1; i < list.length; i += 1) {
-            const diff = list[i].value - list[i - 1].value;
-            if (diff >= 0) total += diff;
-          }
-          days = Math.max(days, list.length - 1);
-        }
-        const expected = Math.round((to.getTime() - from.getTime()) / 86_400_000);
-        return days >= expected - 1 ? total : null; // največ en manjkajoč dan
-      };
-      lastYearKwh = between(lyStart, lyNext);
-      lastYearSameDaysKwh = between(lyStart, lySame);
-    } catch (e) {
-      if (e instanceof MojElektroError && (e.code === "unauthorized" || e.code === "forbidden")) throw e;
-    }
-  }
-
   const costEur = bill?.total ?? null;
   const projectedCostEur = projectedBill?.total ?? null;
 
@@ -375,8 +336,6 @@ async function fetchElectricity(stored: Stored): Promise<ElectricityData> {
     bill,
     projectedBill,
     byBlock,
-    lastYearKwh,
-    lastYearSameDaysKwh,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -392,7 +351,7 @@ export async function getElectricity(): Promise<ElectricityResponse> {
   const retryBlocked = stored.error && stored.lastAttemptAt && now - stored.lastAttemptAt < ERROR_RETRY_MS;
   // Novo obračunsko obdobje → podatki niso več veljavni.
   const samePeriod =
-    stored.data?.periodEnd === toDateString(billingPeriod(new Date()).end) && stored.data?.lastPeriodCostEur !== undefined && stored.data?.lastYearKwh !== undefined;
+    stored.data?.periodEnd === toDateString(billingPeriod(new Date()).end) && stored.data?.lastPeriodCostEur !== undefined;
 
   if (!(fresh && samePeriod) && !retryBlocked) {
     if (!inFlight) {

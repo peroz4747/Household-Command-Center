@@ -28,7 +28,7 @@ export default async function Home() {
 
   const cameraZones = [
     // Javna spletna kamera Pohorske vzpenjače (zgornja postaja), vir: visitpohorje.si/spletne-kamere
-    { label: "Maribor", active: true, embedUrl: "https://www.whatsupcams.com/wgt/si_mbpohorje10/768/480/true/", source: "KKŽ Vzpenjača – ZGORAJ" },
+    { label: "Maribor", active: true, stream: "si_mbpohorje10", source: "KKŽ Vzpenjača – ZGORAJ" },
     { label: t("room.hallway"), active: false },
     { label: t("room.kitchen"), active: false },
     { label: t("room.livingRoom"), active: false },
