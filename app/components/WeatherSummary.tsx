@@ -3,6 +3,8 @@
 import WeatherWarnings from "./WeatherWarnings";
 import { useEffect, useState } from "react";
 import { Box, Button, Card, CardContent, CircularProgress, Typography, Divider } from "@mui/material";
+import RadarIcon from "@mui/icons-material/Radar";
+import RadarDialog from "./RadarDialog";
 import WbSunnyIcon from "@mui/icons-material/WbSunny";
 import CloudIcon from "@mui/icons-material/Cloud";
 import AcUnitIcon from "@mui/icons-material/AcUnit";
@@ -44,6 +46,7 @@ export default function WeatherSummary() {
   const [weather, setWeather] = useState<WeatherPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [radarOpen, setRadarOpen] = useState(false);
   const { t, locale } = useI18n();
   const describe = (code: number) => {
     const key = `weather.code.${code}` as MessageKey;
@@ -84,9 +87,13 @@ export default function WeatherSummary() {
             <Typography variant="h5" sx={{ mt: 1, fontWeight: 700 }}>
               Maribor
             </Typography>
+            <Button size="small" variant="outlined" color="secondary" startIcon={<RadarIcon />} onClick={() => setRadarOpen(true)} sx={{ mt: 1 }}>
+              {t("radar.open")}
+            </Button>
           </Box>
           {loading ? <CircularProgress size={32} color="inherit" /> : weather ? getWeatherIcon(weather.current.weathercode) : null}
         </Box>
+        {radarOpen && <RadarDialog open onClose={() => setRadarOpen(false)} />}
 
         {error ? (
           <Typography color="error" sx={{ mt: 3 }}>

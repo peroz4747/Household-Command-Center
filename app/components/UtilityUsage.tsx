@@ -3,11 +3,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, Card, CardContent, Chip, LinearProgress, Tooltip, Typography } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
+import LocalLaundryServiceIcon from "@mui/icons-material/LocalLaundryService";
 import TariffChip from "./TariffChip";
 import { useI18n } from "../i18n";
 import { billingPeriod } from "../../lib/billing";
 import type { ElectricityResponse } from "../../lib/electricity";
 import type { BillBreakdown } from "../../lib/electricityBill";
+import { cheapDay, formatWindow, hourPrices, localDay, nextCheapWindow } from "../../lib/cheapPower";
 
 // Izmišljeni podatki, dokler Moj Elektro ni nastavljen.
 // Poraba se računa iz dnevnega povprečja, da je skladna s trenutnim dnem v obdobju.
@@ -191,6 +193,38 @@ function Meter({
   );
 }
 
+/** Kdaj prižgati pralni/pomivalni stroj: najcenejše ure danes po tarifi in časovnem bloku. */
+function CheapPower({ now }: { now: Date }) {
+  const { t, locale } = useI18n();
+  const next = nextCheapWindow(now);
+  if (!next) return null;
+  const hour = Number(now.toLocaleString("en-GB", { timeZone: "Europe/Ljubljana", hour: "numeric", hourCycle: "h23" })) % 24;
+  const nowPrice = hourPrices(localDay(now))[hour].eurPerKwh;
+  const cheap = next.window.eurPerKwh;
+  const saving = nowPrice > cheap ? Math.round((1 - cheap / nowPrice) * 100) : 0;
+  const today = cheapDay(localDay(now)).windows.map(formatWindow).join(", ");
+  const eur = (n: number) => n.toLocaleString(locale, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return (
+    <Tooltip title={t("billing.cheap.tooltip", { today, now: eur(nowPrice), cheap: eur(cheap) })} arrow>
+      <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start", p: 1, borderRadius: 1, bgcolor: "rgba(34,197,94,0.08)", cursor: "help" }}>
+        <LocalLaundryServiceIcon sx={{ fontSize: 18, color: "#22c55e", mt: 0.25 }} />
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="caption" sx={{ display: "block", fontWeight: 600 }}>
+            {next.active ? t("billing.cheap.now") : t(next.day === localDay(now) ? "billing.cheap.today" : "billing.cheap.tomorrow", { window: formatWindow(next.window) })}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            {next.active
+              ? next.window.from === 0 && next.window.to === 24
+                ? t("billing.cheap.allDay")
+                : t("billing.cheap.nowDetail", { window: formatWindow(next.window) })
+              : t("billing.cheap.saving", { n: saving })}
+          </Typography>
+        </Box>
+      </Box>
+    </Tooltip>
+  );
+}
+
 export default function UtilityUsage() {
   const [now, setNow] = useState<Date | null>(null);
   const [electricity, setElectricity] = useState<ElectricityResponse | null>(null);
@@ -229,6 +263,17 @@ export default function UtilityUsage() {
         lastPeriodCost: e?.lastPeriodCostEur ?? null,
         lastPeriodLabel: billingPeriod(period.start, -1).start.toLocaleDateString(locale, { month: "long" }),
       };
+      if (e?.lastYearSameDaysKwh != null && e.usedKwh != null && e.lastYearSameDaysKwh > 0) {
+        const diff = Math.round(((e.usedKwh - e.lastYearSameDaysKwh) / e.lastYearSameDaysKwh) * 100);
+        elNotes.push({
+          text: t("billing.lastYear", {
+            n: `${diff > 0 ? "+" : ""}${diff}`,
+            kwh: fmtNum(e.lastYearSameDaysKwh, 0, locale),
+            total: e.lastYearKwh != null ? fmtNum(e.lastYearKwh, 0, locale) : "–",
+          }),
+          color: diff > 0 ? "#f87171" : "#22c55e",
+        });
+      }
       if (electricity?.error) {
         const err = electricity.error;
         elNotes.push({
@@ -270,6 +315,7 @@ export default function UtilityUsage() {
               source={live ? `Moj Elektro${electricity?.distributor ? ` (${electricity.distributor})` : ""}` : t("common.demo")}
               notes={elNotes}
             />
+            {now && <CheapPower now={now} />}
           </Box>
         )}
       </CardContent>
