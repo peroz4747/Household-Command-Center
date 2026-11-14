@@ -36,10 +36,11 @@ function RainMap() {
         const past: Frame[] = data?.radar?.past ?? [];
         if (!past.length) throw new Error("no frames");
         map = L.map(ref.current, { scrollWheelZoom: true, zoomControl: true }).setView(HOME, 8);
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        // OSM podlaga, potemnjena s CSS filtrom (temne podlage CARTO zahtevajo API ključ).
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 12,
-          subdomains: "abcd",
-          attribution: "&copy; OpenStreetMap, &copy; CARTO, radar &copy; RainViewer",
+          className: "radar-base",
+          attribution: "&copy; OpenStreetMap, radar &copy; RainViewer",
         }).addTo(map);
         // Vse slike naložimo vnaprej (prosojne), animacija le menja prosojnost - brez utripanja.
         layers.current = past.map((f) =>
@@ -72,13 +73,23 @@ function RainMap() {
   const frame = frames[index];
   return (
     <Box>
-      <Box ref={ref} sx={{ height: { xs: "60vh", md: 480 }, borderRadius: 1, overflow: "hidden", isolation: "isolate", bgcolor: "#0f172a" }} />
+      <Box
+        ref={ref}
+        sx={{
+          height: { xs: "60vh", md: 480 },
+          borderRadius: 1,
+          overflow: "hidden",
+          isolation: "isolate",
+          bgcolor: "#0f172a",
+          "& .radar-base": { filter: "invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.85) saturate(0.6)" },
+        }}
+      />
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1 }}>
         <IconButton size="small" onClick={() => setPlaying(!playing)} aria-label={playing ? t("radar.pause") : t("radar.play")} disabled={frames.length < 2}>
           {playing ? <PauseIcon fontSize="small" /> : <PlayArrowIcon fontSize="small" />}
         </IconButton>
         <Typography variant="body2" sx={{ fontVariantNumeric: "tabular-nums" }}>
-          {error ? t("radar.error") : frame ? new Date(frame.time * 1000).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : t("common.loading")}
+          {error ? t("radar.error") : frame ? new Date(frame.time * 1000).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Ljubljana" }) : t("common.loading")}
         </Typography>
         {frames.length > 0 && (
           <Box sx={{ flex: 1, display: "flex", gap: "2px", ml: 1 }}>

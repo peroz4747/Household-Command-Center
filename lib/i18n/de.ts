@@ -614,7 +614,7 @@ const de: Record<MessageKey, string> = {
   "billing.cheap.tomorrow": "Wasch-/Spülmaschine: am günstigsten morgen {window}",
   "billing.cheap.saving": "Eine kWh ist dann etwa {n} % günstiger als jetzt.",
   "billing.cheap.tooltip": "Energie + Netzentgelt inkl. MwSt. Jetzt {now} €/kWh, am günstigsten {cheap} €/kWh. Günstigste Stunden heute: {today}.",
-  "billing.cheap.allDay": "Heute den ganzen Tag Niedertarif, die Uhrzeit spielt keine Rolle. Nicht mehrere große Verbraucher gleichzeitig.",
+  "billing.cheap.allDay": "Ganztägig Niedertarif – Uhrzeit egal.",
   "radar.open": "Radar",
   "radar.title": "Wetterradar",
   "radar.tabMap": "Maribor (letzte 2 Stunden)",

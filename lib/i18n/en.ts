@@ -614,7 +614,7 @@ const en: Record<MessageKey, string> = {
   "billing.cheap.tomorrow": "Washer/dishwasher: cheapest tomorrow {window}",
   "billing.cheap.saving": "A kWh is then about {n}% cheaper than now.",
   "billing.cheap.tooltip": "Energy + network fee incl. VAT. Now €{now}/kWh, cheapest €{cheap}/kWh. Cheapest hours today: {today}.",
-  "billing.cheap.allDay": "Low tariff all day today, timing doesn't matter. Avoid running several big appliances at once.",
+  "billing.cheap.allDay": "Low tariff all day – timing doesn't matter.",
   "radar.open": "Radar",
   "radar.title": "Weather radar",
   "radar.tabMap": "Maribor (last 2 hours)",

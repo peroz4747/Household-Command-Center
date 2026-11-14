@@ -20,7 +20,7 @@ const C = {
 const RANGES = { day: 86_400_000, week: 7 * 86_400_000, month: 30 * 86_400_000 } as const;
 type Range = keyof typeof RANGES;
 const H = 240;
-const PAD = { top: 12, right: 12, bottom: 26, left: 44 };
+const PAD = { top: 24, right: 12, bottom: 26, left: 44 };
 
 function niceMax(v: number) {
   if (v <= 0) return 10;
@@ -142,7 +142,7 @@ function Chart({ history, range }: { history: InternetHistory; range: Range }) {
               </text>
             </g>
           ))}
-          <text x={PAD.left - 6} y={PAD.top - 2} textAnchor="end" fontSize={10} fill={C.axis}>
+          <text x={4} y={11} textAnchor="start" fontSize={10} fill={C.axis}>
             Mbps
           </text>
           {xTicks.map((ms) => (

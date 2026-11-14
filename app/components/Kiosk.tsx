@@ -138,7 +138,7 @@ export default function Kiosk() {
           <Typography suppressHydrationWarning sx={{ fontSize: night ? "24vmin" : "18vmin", fontWeight: 200, lineHeight: 0.95, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>
             {time}
           </Typography>
-          <Typography suppressHydrationWarning sx={{ fontSize: "4vmin", opacity: 0.8, textTransform: "capitalize" }}>
+          <Typography suppressHydrationWarning sx={{ fontSize: "4vmin", opacity: 0.8, "&::first-letter": { textTransform: "uppercase" } }}>
             {date}
           </Typography>
           {night && weather && (
@@ -181,7 +181,7 @@ export default function Kiosk() {
             <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "2vmin" }}>
               {weather.forecast.slice(0, 4).map((d, i) => (
                 <Box key={d.date} sx={{ textAlign: "center", p: "2vmin", borderRadius: "2vmin", bgcolor: "rgba(148,163,184,0.07)" }}>
-                  <Typography sx={{ fontSize: "3vmin", opacity: 0.75, textTransform: "capitalize" }}>
+                  <Typography sx={{ fontSize: "3vmin", opacity: 0.75, "&::first-letter": { textTransform: "uppercase" } }}>
                     {i === 0 ? t("kiosk.today") : new Date(`${d.date}T12:00:00`).toLocaleDateString(locale, { weekday: "short" })}
                   </Typography>
                   <WeatherIcon code={d.weathercode} size="8vmin" />

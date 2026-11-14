@@ -127,7 +127,7 @@ function TripMap({ plan, pois }: { plan: TripPlan; pois: TripPoi[] }) {
     };
   }, [plan, pois]);
 
-  return <Box ref={ref} sx={{ height: { xs: 260, md: 340 }, borderRadius: 1, overflow: "hidden", isolation: "isolate", bgcolor: "#1e293b" }} />;
+  return <Box ref={ref} sx={{ height: { xs: 260, md: 340 }, flexShrink: 0, borderRadius: 1, overflow: "hidden", isolation: "isolate", bgcolor: "#1e293b" }} />;
 }
 
 function Figure({ label, value }: { label: string; value: string }) {
@@ -377,6 +377,14 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
               label={t("trip.saved")}
               value={tripId && saved.some((x) => x.id === tripId) ? tripId : ""}
               onChange={(e) => void openSaved(e.target.value)}
+              slotProps={{
+                select: {
+                  renderValue: (id) => {
+                    const x = saved.find((s) => s.id === id);
+                    return x ? `${x.from.split(",")[0]} → ${x.to.split(",")[0]}${x.roundTrip ? " ⇄" : ""} · ${x.distanceKm} km` : "";
+                  },
+                },
+              }}
             >
               {saved.map((x) => (
                 <MenuItem key={x.id} value={x.id} sx={{ display: "flex", gap: 1 }}>

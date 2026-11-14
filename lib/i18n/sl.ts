@@ -614,7 +614,7 @@ const sl = {
   "billing.cheap.tomorrow": "Pralni/pomivalni stroj: najceneje jutri {window}",
   "billing.cheap.saving": "Takrat je kWh približno {n} % cenejša kot zdaj.",
   "billing.cheap.tooltip": "Energija + omrežnina z DDV. Zdaj {now} €/kWh, najceneje {cheap} €/kWh. Najcenejše ure danes: {today}.",
-  "billing.cheap.allDay": "Danes je ves dan nizka tarifa, ura ni pomembna. Ne prižigaj več velikih porabnikov hkrati.",
+  "billing.cheap.allDay": "Ves dan nizka tarifa – ura ni pomembna.",
   "radar.open": "Radar",
   "radar.title": "Vremenski radar",
   "radar.tabMap": "Maribor (zadnji 2 uri)",
