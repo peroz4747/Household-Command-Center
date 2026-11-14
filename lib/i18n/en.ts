@@ -677,7 +677,7 @@ const en: Record<MessageKey, string> = {
   "net.outageList": "Recent outages",
   "net.minutes": "{n} min",
   "camera.live": "Live",
-  "camera.source": "Webcam: {name} (WhatsUpCams, Visit Pohorje)",
+  "camera.source": "Camera: {name}",
   "kiosk.open": "Wall display (kiosk)",
   "kiosk.today": "Today",
   "kiosk.tomorrow": "Tomorrow",
@@ -689,6 +689,10 @@ const en: Record<MessageKey, string> = {
   "kiosk.cheapNext": "Cheapest electricity",
   "kiosk.allDay": "Low tariff all day",
   "camera.reconnecting": "Reconnecting camera …",
+  "camera.snapAge": "Image at {time} · {s} ago",
+  "camera.timelapse": "Last hour",
+  "camera.timelapseAt": "Timelapse · {time} ({n}/{total})",
+  "camera.backLive": "Live",
 };
 
 export default en;

@@ -28,7 +28,9 @@ export default async function Home() {
 
   const cameraZones = [
     // Javna spletna kamera Pohorske vzpenjače (zgornja postaja), vir: visitpohorje.si/spletne-kamere
-    { label: "Maribor", active: true, stream: "si_mbpohorje10", source: "KKŽ Vzpenjača – ZGORAJ" },
+    { label: "Pohorje", active: true, stream: "si_mbpohorje10", source: "KKŽ Vzpenjača – ZGORAJ (WhatsUpCams, Visit Pohorje)" },
+    // DARS objavlja le slike (nova ~1x na minuto); lib/snapCams.ts jih zbira za "v živo" in časovni zamik.
+    { label: "Tržaška", active: false, snapshot: "trzaska", source: "DARS · Maribor, Tržaška (nova slika ~1× na minuto)" },
     { label: t("room.hallway"), active: false },
     { label: t("room.kitchen"), active: false },
     { label: t("room.livingRoom"), active: false },

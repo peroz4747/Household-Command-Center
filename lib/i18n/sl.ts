@@ -677,7 +677,7 @@ const sl = {
   "net.outageList": "Zadnji izpadi",
   "net.minutes": "{n} min",
   "camera.live": "V živo",
-  "camera.source": "Spletna kamera: {name} (WhatsUpCams, Visit Pohorje)",
+  "camera.source": "Kamera: {name}",
   "kiosk.open": "Stenski prikaz (kiosk)",
   "kiosk.today": "Danes",
   "kiosk.tomorrow": "Jutri",
@@ -689,6 +689,10 @@ const sl = {
   "kiosk.cheapNext": "Najcenejša elektrika",
   "kiosk.allDay": "Ves dan nizka tarifa",
   "camera.reconnecting": "Povezujem kamero …",
+  "camera.snapAge": "Slika ob {time} · pred {s}",
+  "camera.timelapse": "Zadnja ura",
+  "camera.timelapseAt": "Časovni zamik · {time} ({n}/{total})",
+  "camera.backLive": "V živo",
 } as const;
 
 export type MessageKey = keyof typeof sl;

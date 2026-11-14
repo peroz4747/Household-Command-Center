@@ -4,11 +4,13 @@ import { useState } from "react";
 import { Box, Button, Card, Chip, Typography, Divider } from "@mui/material";
 import { useI18n } from "../i18n";
 import LiveStream from "./LiveStream";
+import SnapshotCam from "./SnapshotCam";
 
 interface CameraZone {
   label: string;
   active: boolean;
-  stream?: string; // ime javne spletne kamere WhatsUpCams (HLS); brez tega je nadomestna slika
+  stream?: string; // ime javne spletne kamere WhatsUpCams (HLS)
+  snapshot?: string; // kamera s slikami (lib/snapCams.ts); brez obojega je nadomestna slika
   source?: string;
 }
 
@@ -22,6 +24,7 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
   const [selected, setSelected] = useState(Math.max(0, cameraZones.findIndex((z) => z.active)));
   const selectedCamera = cameraZones[selected]?.label ?? "";
   const zone = cameraZones[selected];
+  const real = Boolean(zone?.stream || zone?.snapshot);
 
   return (
     <Card sx={{ minHeight: 420, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -34,12 +37,14 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
             {t("camera.view", { name: selectedCamera })}
           </Typography>
         </Box>
-        <Chip label={zone?.stream ? t("camera.live") : t("camera.online")} color={zone?.stream ? "error" : "success"} />
+        <Chip label={real ? t("camera.live") : t("camera.online")} color={real ? "error" : "success"} />
       </Box>
       <Box sx={{ flex: 1, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", display: "grid", placeItems: "center", p: 2 }}>
-        <Box sx={{ width: "100%", height: zone?.stream ? "auto" : 260, aspectRatio: zone?.stream ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
+        <Box sx={{ width: "100%", height: real ? "auto" : 260, aspectRatio: real ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
           {zone?.stream ? (
             <LiveStream key={zone.stream} name={zone.stream} title={zone.source ?? zone.label} />
+          ) : zone?.snapshot ? (
+            <SnapshotCam key={zone.snapshot} cam={zone.snapshot} title={zone.source ?? zone.label} />
           ) : (
             <Typography variant="h6" color="text.secondary" sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
               {t("camera.placeholder", { name: selectedCamera })}

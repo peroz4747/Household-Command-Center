@@ -5,6 +5,8 @@ export async function register() {
       import("./lib/notifier"),
       import("./lib/internetHistory"),
     ]);
+    const { startSnapCams } = await import("./lib/snapCams");
+    startSnapCams();
     startNewsTopCollector();
     startNotifier();
     startSpeedCollector();

@@ -677,7 +677,7 @@ const de: Record<MessageKey, string> = {
   "net.outageList": "Letzte Ausfälle",
   "net.minutes": "{n} Min.",
   "camera.live": "Live",
-  "camera.source": "Webcam: {name} (WhatsUpCams, Visit Pohorje)",
+  "camera.source": "Kamera: {name}",
   "kiosk.open": "Wandanzeige (Kiosk)",
   "kiosk.today": "Heute",
   "kiosk.tomorrow": "Morgen",
@@ -689,6 +689,10 @@ const de: Record<MessageKey, string> = {
   "kiosk.cheapNext": "Günstigster Strom",
   "kiosk.allDay": "Ganztägig Niedertarif",
   "camera.reconnecting": "Kamera wird verbunden …",
+  "camera.snapAge": "Bild um {time} · vor {s}",
+  "camera.timelapse": "Letzte Stunde",
+  "camera.timelapseAt": "Zeitraffer · {time} ({n}/{total})",
+  "camera.backLive": "Live",
 };
 
 export default de;
