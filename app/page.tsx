@@ -9,7 +9,8 @@ import ClientDashboard from "./components/ClientDashboard";
 import ClimateControl from "./components/ClimateControl";
 import ServerStatus from "./components/ServerStatus";
 import ServerPower from "./components/ServerPower";
-import { Box, Typography } from "@mui/material";
+import { Box, IconButton, Tooltip, Typography } from "@mui/material";
+import TvIcon from "@mui/icons-material/Tv";
 import EnvironmentOverview from "./components/EnvironmentOverview";
 import Shortcuts from "./components/Shortcuts";
 import NetworkAndEnergy from "./components/NetworkAndEnergy";
@@ -26,9 +27,11 @@ export default async function Home() {
   const t = translator(await getLang());
 
   const cameraZones = [
+    // Javna spletna kamera Pohorske vzpenjače (zgornja postaja), vir: visitpohorje.si/spletne-kamere
+    { label: "Maribor", active: true, embedUrl: "https://www.whatsupcams.com/wgt/si_mbpohorje10/768/480/true/", source: "KKŽ Vzpenjača – ZGORAJ" },
     { label: t("room.hallway"), active: false },
     { label: t("room.kitchen"), active: false },
-    { label: t("room.livingRoom"), active: true },
+    { label: t("room.livingRoom"), active: false },
     { label: t("room.office"), active: false },
     { label: t("room.bedroom"), active: false },
     { label: t("room.balcony"), active: false },
@@ -85,7 +88,12 @@ export default async function Home() {
 
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: { xs: "center", md: "flex-end" } }}>
           <HeaderClock />
-          <Box sx={{ mt: 1 }}>
+          <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1 }}>
+            <Tooltip title={t("kiosk.open")}>
+              <IconButton href="/kiosk" size="small" aria-label={t("kiosk.open")}>
+                <TvIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <LanguageSwitcher />
           </Box>
         </Box>

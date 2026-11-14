@@ -330,22 +330,26 @@ async function fetchElectricity(stored: Stored): Promise<ElectricityData> {
       const lySame = new Date(lyStart.getFullYear(), lyStart.getMonth(), 1 + daysWithData);
       const lyNext = new Date(lyStart.getFullYear(), lyStart.getMonth() + 1, 1);
       const plus = (d: Date, n: number) => toDateString(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
-      for (const d of [lyStart, lySame, lyNext]) await fetchRange(d, plus(d, 2));
-      const exact = (readings: Reading[], day: string) => {
-        const r = readings.find((x) => x.day >= day);
-        return r && r.day <= plus(new Date(`${day}T12:00:00`), 2) ? r.value : null; // le blizu iskanega dne
-      };
+      await fetchRange(lyStart, plus(lyNext, 1)); // cel mesec v enem klicu (≤ 33 dni)
       const codes = parts.length ? [registers.VT, registers.MT] : [registers.ET];
+      // Vsota dnevnih prirastkov: ob menjavi števca stanje pade, ta dan preskočimo (izgubimo le en dan porabe).
       const between = (from: Date, to: Date) => {
+        const a = toDateString(from);
+        const b = toDateString(to);
         let total = 0;
+        let days = 0;
         for (const code of codes) {
-          const list = [...new Map((code ? (byRegister.get(code) ?? []) : []).map((r) => [r.day, r])).values()].sort((a, b) => a.day.localeCompare(b.day));
-          const a = exact(list, toDateString(from));
-          const b = exact(list, toDateString(to));
-          if (a === null || b === null || b < a) return null;
-          total += b - a;
+          const list = [...new Map((code ? (byRegister.get(code) ?? []) : []).map((r) => [r.day, r])).values()]
+            .filter((r) => r.day >= a && r.day <= b)
+            .sort((x, y) => x.day.localeCompare(y.day));
+          for (let i = 1; i < list.length; i += 1) {
+            const diff = list[i].value - list[i - 1].value;
+            if (diff >= 0) total += diff;
+          }
+          days = Math.max(days, list.length - 1);
         }
-        return total;
+        const expected = Math.round((to.getTime() - from.getTime()) / 86_400_000);
+        return days >= expected - 1 ? total : null; // največ en manjkajoč dan
       };
       lastYearKwh = between(lyStart, lyNext);
       lastYearSameDaysKwh = between(lyStart, lySame);

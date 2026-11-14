@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { TripError, lastTrip, planTrip, type TripPlace } from "../../../lib/trip";
+import { TripError, deleteTrip, getTrip, planTrip, savedTrips, summarize, type TripPlace } from "../../../lib/trip";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +12,23 @@ function place(v: unknown): TripPlace | null {
   return { label, lat, lon };
 }
 
-export async function GET() {
+/** Brez ?id: zadnja pot in seznam shranjenih; z ?id: ta pot. */
+export async function GET(req: Request) {
+  const id = new URL(req.url).searchParams.get("id");
   try {
-    return NextResponse.json({ trip: await lastTrip() }, { headers: { "Cache-Control": "no-store" } });
+    if (id) return NextResponse.json({ trip: await getTrip(id) }, { headers: { "Cache-Control": "no-store" } });
+    const list = await savedTrips();
+    return NextResponse.json({ trip: list[0] ?? null, saved: list.map(summarize) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    return NextResponse.json({ trip: null });
+    return NextResponse.json({ trip: null, saved: [] });
   }
+}
+
+export async function DELETE(req: Request) {
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "bad-request" }, { status: 400 });
+  await deleteTrip(id);
+  return NextResponse.json({ saved: (await savedTrips()).map(summarize) });
 }
 
 export async function POST(req: Request) {
@@ -28,11 +39,12 @@ export async function POST(req: Request) {
   const fuelPercent = Number(body?.fuelPercent);
   const reserveKm = Number(body?.reserveKm);
   const lang = ["sl", "en", "de"].includes(body?.lang) ? body.lang : "sl";
+  const date = typeof body?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : undefined;
   const valid = from && to && via.length <= 3 && via.every(Boolean) && fuelPercent >= 0 && fuelPercent <= 100 && reserveKm >= 0 && reserveKm <= 200;
   if (!valid) return NextResponse.json({ error: "bad-request" }, { status: 400 });
   try {
-    const plan = await planTrip({ from, to, via: via as TripPlace[], roundTrip: Boolean(body.roundTrip), fuelPercent, reserveKm, lang });
-    return NextResponse.json({ plan });
+    const trip = await planTrip({ from, to, via: via as TripPlace[], roundTrip: Boolean(body.roundTrip), fuelPercent, reserveKm, lang, date });
+    return NextResponse.json({ trip, saved: (await savedTrips()).map(summarize) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof TripError ? e.message : "routing" }, { status: 502 });
   }

@@ -9,6 +9,8 @@ import { Dimmed, NotConnectedChip } from "./NotConnected";
 interface CameraZone {
   label: string;
   active: boolean;
+  embedUrl?: string; // javna spletna kamera (iframe); brez tega je nadomestna slika
+  source?: string;
 }
 
 interface ClientDashboardProps {
@@ -20,6 +22,7 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
   // Indeks namesto imena, da izbira ostane ob menjavi jezika.
   const [selected, setSelected] = useState(Math.max(0, cameraZones.findIndex((z) => z.active)));
   const selectedCamera = cameraZones[selected]?.label ?? "";
+  const zone = cameraZones[selected];
 
   return (
     <Card sx={{ minHeight: 420, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -32,14 +35,32 @@ export default function ClientDashboard({ cameraZones }: ClientDashboardProps) {
             {t("camera.view", { name: selectedCamera })}
           </Typography>
         </Box>
-        <Chip label={t("camera.online")} color="success" />
+        <Chip label={zone?.embedUrl ? t("camera.live") : t("camera.online")} color={zone?.embedUrl ? "error" : "success"} />
       </Box>
       <Box sx={{ flex: 1, background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01))", display: "grid", placeItems: "center", p: 2 }}>
-        <Box sx={{ width: "100%", height: 260, borderRadius: 3, background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
-          <Typography variant="h6" color="text.secondary" sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
-            {t("camera.placeholder", { name: selectedCamera })}
-          </Typography>
+        <Box sx={{ width: "100%", height: zone?.embedUrl ? "auto" : 260, aspectRatio: zone?.embedUrl ? "16 / 10" : undefined, borderRadius: 3, overflow: "hidden", background: "radial-gradient(circle at 30% 20%, rgba(94, 147, 255, 0.16), transparent 38%), #111b2f", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 30px 120px rgba(0,0,0,0.16)", position: "relative" }}>
+          {zone?.embedUrl ? (
+            <Box
+              component="iframe"
+              key={zone.embedUrl}
+              src={zone.embedUrl}
+              title={zone.source ?? zone.label}
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              loading="lazy"
+              sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+            />
+          ) : (
+            <Typography variant="h6" color="text.secondary" sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
+              {t("camera.placeholder", { name: selectedCamera })}
+            </Typography>
+          )}
         </Box>
+        {zone?.source && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, justifySelf: "start" }}>
+            {t("camera.source", { name: zone.source })}
+          </Typography>
+        )}
       </Box>
       <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, p: 2 }}>

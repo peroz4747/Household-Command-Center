@@ -6,6 +6,8 @@ import { alpha } from "@mui/material/styles";
 import PublicIcon from "@mui/icons-material/Public";
 import PublicOffIcon from "@mui/icons-material/PublicOff";
 import SpeedIcon from "@mui/icons-material/Speed";
+import ShowChartIcon from "@mui/icons-material/ShowChart";
+import InternetHistoryDialog from "./InternetHistoryDialog";
 import { useI18n } from "../i18n";
 
 type Status = { online: boolean; latencyMs: number | null } | null;
@@ -20,6 +22,7 @@ export default function InternetStatus() {
   const [testing, setTesting] = useState(false);
   const [speed, setSpeed] = useState<Speed | null>(null);
   const [speedError, setSpeedError] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -93,6 +96,12 @@ export default function InternetStatus() {
           </Box>
         </Box>
       </Tooltip>
+      <Box sx={{ display: "flex", gap: 1 }}>
+      <Tooltip title={t("net.history")}>
+        <IconButton onClick={() => setHistoryOpen(true)} aria-label={t("net.history")} color="primary" sx={(theme) => ({ bgcolor: alpha(theme.palette.primary.main, 0.12), "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.24) } })}>
+          <ShowChartIcon />
+        </IconButton>
+      </Tooltip>
       <Tooltip title={t("home.speedTest")}>
         <span>
           <IconButton
@@ -109,6 +118,8 @@ export default function InternetStatus() {
           </IconButton>
         </span>
       </Tooltip>
+      </Box>
+      {historyOpen && <InternetHistoryDialog open onClose={() => setHistoryOpen(false)} />}
     </Box>
   );
 }

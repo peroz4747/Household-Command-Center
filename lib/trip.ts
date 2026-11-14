@@ -3,6 +3,9 @@ import storage from "./storage";
 import { getCar } from "./car";
 import { CAR_MANUAL } from "./carManual";
 import { FUEL, getFuel } from "./fuel";
+import { dailyForecast, type DailyForecast } from "./forecast";
+import { countriesAlong, tollsFor, type TollInfo } from "./tolls";
+import { randomUUID } from "node:crypto";
 
 export type TripPlace = { label: string; lat: number; lon: number };
 export type TripRequest = {
@@ -10,6 +13,7 @@ export type TripRequest = {
   to: TripPlace;
   via: TripPlace[];
   roundTrip: boolean;
+  date?: string; // dan odhoda YYYY-MM-DD (za vreme na cilju in veljavnost vinjete)
   fuelPercent: number;
   reserveKm: number;
   lang: string;
@@ -52,10 +56,14 @@ export type TripPlan = {
   along: TripPoi[];
   geometry: [number, number][];
   warnings: TripWarning[];
+  countries: string[];
+  tolls: TollInfo[];
+  destWeather: (DailyForecast & { arrival: string }) | null; // null = dan je zunaj 16-dnevne napovedi
   mapsUrl: string;
   createdAt: string;
 };
-export type SavedTrip = { request: TripRequest; plan: TripPlan };
+export type SavedTrip = { id: string; request: TripRequest; plan: TripPlan };
+export type SavedTripSummary = { id: string; from: string; to: string; via: number; roundTrip: boolean; date?: string; distanceKm: number; createdAt: string };
 
 export class TripError extends Error {}
 
@@ -85,7 +93,9 @@ const POI_STEP_KM = 40;
 const POI_MAX_SAMPLES = 12; // Wikipedia hitro omeji število zahtev
 const POI_RADIUS_M = 10_000; // največ, kar dovoli Wikipedia
 const WIKI_CACHE_MS = 7 * 86_400_000;
-const SAVE_KEY = "trip";
+const SAVE_KEY = "trips"; // zadnjih MAX_SAVED poti, najnovejša prva
+const OLD_SAVE_KEY = "trip"; // prej le ena pot
+const MAX_SAVED = 12;
 // Photon ne pozna slovenskih imen tujih mest.
 const EXONYMS: Record<string, string> = {
   dunaj: "Wien",
@@ -518,7 +528,7 @@ async function findPois(lang: string, verts: Vertex[], routeKm: number, target: 
 
 /* ---------------- Načrt ---------------- */
 
-export async function planTrip(req: TripRequest): Promise<TripPlan> {
+export async function planTrip(req: TripRequest): Promise<SavedTrip> {
   const warnings = new Set<TripWarning>();
   const tank = CAR_MANUAL.tankLiters;
   const live = await getCar().then((c) => c.live, () => null);
@@ -591,12 +601,23 @@ export async function planTrip(req: TripRequest): Promise<TripPlan> {
   });
 
   const target = stops.find((s) => s.kind === "dest")!;
+  const date = req.date ?? new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Ljubljana" });
+  // Prihod: odhod okoli 8h + čas vožnje do cilja (delež poti).
+  const minutesToTarget = final.km > 0 ? (target.km / final.km) * final.minutes : 0;
+  const arrival = new Date(Date.parse(`${date}T08:00:00Z`) + minutesToTarget * 60_000).toISOString().slice(0, 10);
+  const weatherJob = dailyForecast(target.lat, target.lon)
+    .then((days) => {
+      const d = days.find((x) => x.date === arrival);
+      return d ? { ...d, arrival } : null;
+    })
+    .catch(() => null);
   let pois: { destination: TripPoi[]; along: TripPoi[] } = { destination: [], along: [] };
   try {
     pois = await findPois(req.lang, finalVerts, final.km, target, target.km);
   } catch {
     warnings.add("poiUnavailable");
   }
+  const countries = countriesAlong(final.coords, final.cum);
   for (const s of stops) {
     if (s.kind === "fuel") s.nearby = pois.along.filter((p) => Math.abs(p.km - s.km) <= 12 && p.offRouteKm <= 6).slice(0, 2).map((p) => p.title);
   }
@@ -627,16 +648,71 @@ export async function planTrip(req: TripRequest): Promise<TripPlan> {
     along: pois.along,
     geometry: final.coords.filter((_, i) => i % step === 0 || i === final.coords.length - 1),
     warnings: [...warnings],
+    countries,
+    tolls: tollsFor(countries, date),
+    destWeather: await weatherJob,
     mapsUrl,
     createdAt: new Date().toISOString(),
   };
-  await storage.writeItems(SAVE_KEY, { request: req, plan } satisfies SavedTrip);
-  return plan;
+  return saveTrip({ ...req, date }, plan);
 }
 
-export async function lastTrip(): Promise<SavedTrip | null> {
+/* ---------------- Shranjene poti ---------------- */
+
+const tripKey = (r: TripRequest) => [r.from, ...r.via, r.to].map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join(";") + (r.roundTrip ? "|rt" : "");
+const sameTrip = (a: TripRequest, b: TripRequest) => tripKey(a) === tripKey(b);
+
+export async function savedTrips(): Promise<SavedTrip[]> {
   const raw = await storage.readItems(SAVE_KEY);
-  return raw && !Array.isArray(raw) ? (raw as SavedTrip) : null;
+  if (Array.isArray(raw) && raw.length) return raw as SavedTrip[];
+  // Prenos iz starega zapisa z eno potjo.
+  const old = await storage.readItems(OLD_SAVE_KEY);
+  return old && !Array.isArray(old) && old.plan ? [{ id: randomUUID(), ...(old as Omit<SavedTrip, "id">) }] : [];
+}
+
+async function saveTrip(request: TripRequest, plan: TripPlan): Promise<SavedTrip> {
+  const list = await savedTrips();
+  const previous = list.find((t) => sameTrip(t.request, request));
+  const trip: SavedTrip = { id: previous?.id ?? randomUUID(), request, plan };
+  await storage.writeItems(SAVE_KEY, [trip, ...list.filter((t) => t.id !== trip.id)].slice(0, MAX_SAVED));
+  return trip;
+}
+
+export async function getTrip(id: string): Promise<SavedTrip | null> {
+  return (await savedTrips()).find((t) => t.id === id) ?? null;
+}
+
+export async function deleteTrip(id: string): Promise<void> {
+  await storage.writeItems(SAVE_KEY, (await savedTrips()).filter((t) => t.id !== id));
+}
+
+export const summarize = (t: SavedTrip): SavedTripSummary => ({
+  id: t.id,
+  from: t.request.from.label,
+  to: t.request.to.label,
+  via: t.request.via.length,
+  roundTrip: t.request.roundTrip,
+  date: t.request.date,
+  distanceKm: t.plan.distanceKm,
+  createdAt: t.plan.createdAt,
+});
+
+/** Kratko besedilo poti za obvestilo na telefon. */
+export function tripText(t: SavedTrip): string {
+  const p = t.plan;
+  const h = Math.floor(p.durationMin / 60);
+  const m = String(p.durationMin % 60).padStart(2, "0");
+  const lines = [`${p.distanceKm} km · ${h} h ${m} min · ~${p.liters} l${p.cost !== null ? ` · ~${p.cost} €` : ""}`];
+  for (const s of p.stops) {
+    if (s.kind === "fuel") lines.push(`⛽ km ${s.km}: ${s.label || "natoči na tem delu poti"}${s.price ? ` (${s.price.toFixed(3)} €)` : ""}`);
+    else if (s.kind === "via") lines.push(`📍 km ${s.km}: ${s.label}`);
+  }
+  const vignettes = p.tolls.filter((x) => x.kind === "vignette" && (x.country !== "SI" || x.status !== "ok")).map((x) => x.country);
+  const distance = p.tolls.filter((x) => x.kind === "distance").map((x) => x.country);
+  if (vignettes.length) lines.push(`🎫 Vinjeta: ${vignettes.join(", ")}`);
+  if (distance.length) lines.push(`🛣 Cestnina po km: ${distance.join(", ")}`);
+  if (p.destWeather) lines.push(`🌤 ${t.request.to.label.split(",")[0]} ${p.destWeather.arrival.slice(8, 10)}. ${p.destWeather.arrival.slice(5, 7)}.: ${Math.round(p.destWeather.low)}–${Math.round(p.destWeather.high)} °C`);
+  return lines.join("\n");
 }
 
 export async function searchPlaces(q: string, lang: string): Promise<TripPlace[]> {

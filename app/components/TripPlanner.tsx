@@ -32,8 +32,12 @@ import LocalGasStationIcon from "@mui/icons-material/LocalGasStation";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import SendToMobileIcon from "@mui/icons-material/SendToMobile";
+import ConfirmationNumberOutlinedIcon from "@mui/icons-material/ConfirmationNumberOutlined";
+import TollIcon from "@mui/icons-material/Toll";
 import type { MessageKey } from "../../lib/i18n";
-import type { PoiCategory, SavedTrip, TripPlace, TripPlan, TripPoi, TripStop, TripWarning } from "../../lib/trip";
+import type { PoiCategory, SavedTrip, SavedTripSummary, TripPlace, TripPlan, TripPoi, TripStop, TripWarning } from "../../lib/trip";
+import type { TollInfo } from "../../lib/tolls";
 import { useI18n } from "../i18n";
 
 export type TripCar = { fuelPercent: number | null; lat: number | null; lon: number | null; address: string | null };
@@ -201,6 +205,53 @@ function PoiCard({ poi, showKm }: { poi: TripPoi; showKm: boolean }) {
   );
 }
 
+const todayLj = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Ljubljana" });
+
+function countryName(code: string, locale: string) {
+  try {
+    return new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+function Tolls({ tolls }: { tolls: TollInfo[] }) {
+  const { t, locale } = useI18n();
+  const relevant = tolls.filter((x) => x.kind !== "none");
+  if (!relevant.length) return null;
+  return (
+    <Box>
+      <Typography variant="overline" color="text.secondary">
+        {t("trip.tolls")}
+      </Typography>
+      {relevant.map((x) => {
+        const si = x.country === "SI";
+        const color = si && x.status === "expired" ? "error.main" : si && x.status === "expiring" ? "warning.main" : "text.secondary";
+        return (
+          <Box key={x.country} sx={{ display: "flex", gap: 1.5, alignItems: "flex-start", py: 0.75 }}>
+            <Box sx={{ color: x.kind === "vignette" ? "#a78bfa" : "#fbbf24", mt: 0.25 }}>
+              {x.kind === "vignette" ? <ConfirmationNumberOutlinedIcon fontSize="small" /> : <TollIcon fontSize="small" />}
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {countryName(x.country, locale)} · {x.kind === "vignette" ? t("trip.toll.vignette") : t("trip.toll.distance")}
+              </Typography>
+              <Typography variant="caption" sx={{ display: "block", color }}>
+                {si ? t(`trip.toll.SI.${x.status ?? "ok"}`) : t(x.note as MessageKey)}
+              </Typography>
+            </Box>
+            {x.url && (
+              <Link href={x.url} target="_blank" rel="noreferrer" variant="caption" sx={{ whiteSpace: "nowrap", mt: 0.25 }}>
+                {x.kind === "vignette" ? t("trip.toll.buy") : t("trip.toll.info")}
+              </Link>
+            )}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
 function formatDuration(min: number) {
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;
 }
@@ -221,24 +272,60 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
   const [fuel, setFuel] = useState(car.fuelPercent ?? 50);
   const [reserve, setReserve] = useState(80);
   const [plan, setPlan] = useState<TripPlan | null>(null);
+  const [tripId, setTripId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedTripSummary[]>([]);
+  const [date, setDate] = useState(todayLj);
+  const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<MessageKey | null>(null);
   const [filter, setFilter] = useState<PoiCategory | null>(null);
 
+  const show = (trip: SavedTrip) => {
+    setFrom(trip.request.from);
+    setTo(trip.request.to);
+    setVia(trip.request.via);
+    setRoundTrip(trip.request.roundTrip);
+    setReserve(trip.request.reserveKm);
+    // Pretekli dan odhoda zamenja današnji (vreme in vinjeta se računata za izbrani dan).
+    if (trip.request.date && trip.request.date >= todayLj()) setDate(trip.request.date);
+    setPlan(trip.plan);
+    setTripId(trip.id);
+    setFilter(null);
+    setSendState("idle");
+  };
+
   useEffect(() => {
     fetch("/api/trip", { cache: "no-store" })
       .then((r) => r.json())
-      .then(({ trip }: { trip: SavedTrip | null }) => {
-        if (!trip) return;
-        setFrom(trip.request.from);
-        setTo(trip.request.to);
-        setVia(trip.request.via);
-        setRoundTrip(trip.request.roundTrip);
-        setReserve(trip.request.reserveKm);
-        setPlan(trip.plan);
+      .then(({ trip, saved }: { trip: SavedTrip | null; saved?: SavedTripSummary[] }) => {
+        setSaved(saved ?? []);
+        if (trip) show(trip);
       })
       .catch(() => {});
   }, []);
+
+  const openSaved = (id: string) =>
+    fetch(`/api/trip?id=${encodeURIComponent(id)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then(({ trip }: { trip: SavedTrip | null }) => trip && show(trip))
+      .catch(() => {});
+
+  const removeSaved = async (id: string) => {
+    const res = await fetch(`/api/trip?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => null);
+    const body = res?.ok ? await res.json() : null;
+    if (body) setSaved(body.saved);
+    if (id === tripId) {
+      setPlan(null);
+      setTripId(null);
+    }
+  };
+
+  const sendToPhone = async () => {
+    if (!tripId) return;
+    setSendState("sending");
+    const res = await fetch("/api/trip/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: tripId }) }).catch(() => null);
+    setSendState(res?.ok ? "sent" : "error");
+  };
 
   const submit = async () => {
     if (!from || !to) return;
@@ -248,17 +335,23 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
       const res = await fetch("/api/trip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from, to, via: via.filter(Boolean), roundTrip, fuelPercent: fuel, reserveKm: reserve, lang }),
+        body: JSON.stringify({ from, to, via: via.filter(Boolean), roundTrip, fuelPercent: fuel, reserveKm: reserve, lang, date }),
       });
       const body = await res.json();
-      if (!res.ok || !body.plan) throw new Error(body.error);
-      setPlan(body.plan);
-      setFilter(null);
+      if (!res.ok || !body.trip) throw new Error(body.error);
+      show(body.trip);
+      setSaved(body.saved ?? []);
     } catch (e) {
       setError((e as Error).message === "no-route" ? "trip.err.noRoute" : "trip.err.routing");
     } finally {
       setBusy(false);
     }
+  };
+
+  const describeWeather = (code: number) => {
+    const key = `weather.code.${code}` as MessageKey;
+    const text = t(key);
+    return text === key ? t("weather.code.unknown") : text;
   };
 
   const allPois = useMemo(() => (plan ? [...plan.destination, ...plan.along] : []), [plan]);
@@ -277,6 +370,38 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
       </DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, pt: 1 }}>
+          {saved.length > 0 && (
+            <TextField
+              select
+              size="small"
+              label={t("trip.saved")}
+              value={tripId && saved.some((x) => x.id === tripId) ? tripId : ""}
+              onChange={(e) => void openSaved(e.target.value)}
+            >
+              {saved.map((x) => (
+                <MenuItem key={x.id} value={x.id} sx={{ display: "flex", gap: 1 }}>
+                  <Box sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {x.from.split(",")[0]} → {x.to.split(",")[0]}
+                    {x.roundTrip ? " ⇄" : ""}
+                    <Typography component="span" variant="caption" color="text.secondary">
+                      {" "}
+                      · {x.distanceKm} km{x.date ? ` · ${new Date(`${x.date}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "numeric" })}` : ""}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    aria-label={t("trip.deleteSaved")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void removeSaved(x.id);
+                    }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
           <PlaceField label={t("trip.from")} value={from} onChange={setFrom} lang={lang} />
           {via.map((v, i) => (
             <Box key={i} sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
@@ -293,13 +418,21 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
             </Button>
             <FormControlLabel control={<Switch checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} />} label={t("trip.roundTrip")} />
           </Box>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 160px" }, gap: 2.5, alignItems: "center" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 160px 160px" }, gap: 2.5, alignItems: "center" }}>
             <Box sx={{ px: 1 }}>
               <Typography variant="caption" color="text.secondary">
                 {t("trip.fuelNow", { n: fuel })}
               </Typography>
               <Slider size="small" min={0} max={100} value={fuel} onChange={(_, v) => setFuel(v as number)} aria-label={t("trip.fuelAria")} color="secondary" />
             </Box>
+            <TextField
+              type="date"
+              size="small"
+              label={t("trip.date")}
+              value={date}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: todayLj() } }}
+            />
             <TextField select size="small" label={t("trip.reserve")} value={reserve} onChange={(e) => setReserve(Number(e.target.value))}>
               {RESERVES.map((r) => (
                 <MenuItem key={r} value={r}>
@@ -322,6 +455,20 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
               <Figure label={t("trip.fuelUsed")} value={`~${plan.liters} l`} />
               <Figure label={t("trip.cost")} value={plan.cost === null ? "–" : `~${plan.cost} €`} />
             </Box>
+            {plan.destWeather !== undefined && (
+              <Alert severity="info" icon={false} sx={{ py: 0 }}>
+                {plan.destWeather
+                  ? t("trip.weather", {
+                      place: (to?.label ?? "").split(",")[0],
+                      date: new Date(`${plan.destWeather.arrival}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "numeric" }),
+                      desc: describeWeather(plan.destWeather.weathercode),
+                      low: Math.round(plan.destWeather.low),
+                      high: Math.round(plan.destWeather.high),
+                      rain: plan.destWeather.precipitationChance ?? 0,
+                    })
+                  : t("trip.weatherFar")}
+              </Alert>
+            )}
             <Alert severity={fuelStops ? "warning" : "success"} icon={<LocalGasStationIcon fontSize="inherit" />}>
               {fuelStops ? t("trip.needStops", { n: fuelStops }) : t("trip.noStops", { n: arrival?.fuelPercent ?? 0 })}
             </Alert>
@@ -336,9 +483,20 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
                 <Typography variant="overline" color="text.secondary">
                   {t("trip.itinerary")}
                 </Typography>
-                <Button size="small" href={plan.mapsUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
-                  {t("trip.openMaps")}
-                </Button>
+                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <Button
+                    size="small"
+                    startIcon={sendState === "sending" ? <CircularProgress size={14} color="inherit" /> : <SendToMobileIcon />}
+                    disabled={!tripId || sendState === "sending"}
+                    color={sendState === "error" ? "error" : sendState === "sent" ? "success" : "primary"}
+                    onClick={() => void sendToPhone()}
+                  >
+                    {sendState === "sent" ? t("trip.sent") : sendState === "error" ? t("trip.sendError") : t("trip.send")}
+                  </Button>
+                  <Button size="small" href={plan.mapsUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
+                    {t("trip.openMaps")}
+                  </Button>
+                </Box>
               </Box>
               {plan.stops.map((s, i) => (
                 <StopRow key={i} stop={s} />
@@ -347,6 +505,7 @@ export default function TripPlanner({ open, onClose, car }: { open: boolean; onC
                 {t("trip.estimate", { km: plan.fullRangeKm })}
               </Typography>
             </Box>
+            {plan.tolls && <Tolls tolls={plan.tolls} />}
             {allPois.length > 0 && (
               <Box>
                 <Typography variant="overline" color="text.secondary">
