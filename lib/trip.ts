@@ -667,7 +667,10 @@ export async function savedTrips(): Promise<SavedTrip[]> {
   if (Array.isArray(raw) && raw.length) return raw as SavedTrip[];
   // Prenos iz starega zapisa z eno potjo.
   const old = await storage.readItems(OLD_SAVE_KEY);
-  return old && !Array.isArray(old) && old.plan ? [{ id: randomUUID(), ...(old as Omit<SavedTrip, "id">) }] : [];
+  if (!old || Array.isArray(old) || !old.plan) return [];
+  const list = [{ id: randomUUID(), ...(old as Omit<SavedTrip, "id">) }];
+  await storage.writeItems(SAVE_KEY, list); // takoj zapišemo, da ID ostane enak
+  return list;
 }
 
 async function saveTrip(request: TripRequest, plan: TripPlan): Promise<SavedTrip> {

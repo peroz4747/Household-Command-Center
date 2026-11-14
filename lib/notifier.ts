@@ -172,14 +172,17 @@ async function tick(): Promise<void> {
     // Ustavljeni gostje in kontejnerji: obvestilo le ob prehodu "teče" → "ne teče".
     const overview = await getNetworkOverview();
     if (overview.errors.length) return; // ob delnih podatkih ne sklepamo, da se je kaj ustavilo
-    const guests = overview.items.filter((i) => i.kind !== "node");
+    // Docker kontejner ob vsaki posodobitvi dobi nov ID, zato ga prepoznamo po imenu.
+    const keyOf = (i: (typeof overview.items)[number]) => (i.kind === "docker" ? `docker:${i.name}` : i.id);
+    const guests = overview.items.filter((i) => i.kind !== "node").map((i) => ({ ...i, id: keyOf(i) }));
     const runningNow = guests.filter((i) => i.status === "running").map((i) => i.id);
     const tank = await getTankControl().catch(() => null);
     // Ob namernem izklopu bazena tank dashboard sam ustavi kontejnerje, ki ga uporabljajo.
     const tankWork = tank && tank.action === "export" && tank.status !== "error" && (!tank.finishedAt || now / 1000 - tank.finishedAt < 3600);
-    const alerted = new Set(state.stoppedAlerted ?? []);
+    // Obvestila za gostje, ki jih ni več na seznamu (odstranjeni, stari ključi), pozabimo.
+    const alerted = new Set((state.stoppedAlerted ?? []).filter((id) => guests.some((g) => g.id === id)));
     if (state.running) {
-      for (const id of state.running) {
+      for (const id of state.running.filter((r) => !r.startsWith("docker/"))) {
         const g = guests.find((x) => x.id === id);
         if (runningNow.includes(id) || alerted.has(id) || tankWork) continue;
         const label = g ? `${g.name} (${g.kind === "docker" ? "Docker" : g.id.replace(/^.*\//, "CT/VM ")})` : id;
