@@ -175,7 +175,7 @@ export default function MarketOverview() {
         {error && !items && <Typography color="error">{t("markets.error")}</Typography>}
         {!items && !error && <Typography color="text.secondary">{t("common.loading")}</Typography>}
         {items && (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 1.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(4, 1fr)", lg: "repeat(6, 1fr)" }, gap: 1.5 }}>
             {items.map((q) => (
               <Tile key={q.symbol} q={q} range={range} />
             ))}
