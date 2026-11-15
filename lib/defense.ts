@@ -31,6 +31,10 @@ export type Conflict = {
   recent: Record<string, number>;
   ongoing: boolean;
   byYear: { y: number; a: string[]; b: string[]; a2: string[]; b2: string[] }[]; // zadnjih 10 let
+  // Udeležba posamezne države: stran, vloga (neposredno / podpora s četami), leta, strani v prvem letu udeležbe.
+  members: Record<string, { side: "A" | "B"; role: "primary" | "support"; years: [number, number][]; sideA: string; sideB: string; now: boolean }>;
+  // UCDP GED (od 1989): žrtve v bojih po straneh, civilisti, neznano; byIso le za države, ki so bile edina vlada na strani.
+  ged: { a: number; b: number; civ: number; unk: number; from: number; to: number; byIso: Record<string, number> } | null;
   outcome: number | null; // 1 mir. sporazum, 2 premirje, 3 zmaga strani A, 4 zmaga strani B, 5 nizka aktivnost, 6 akter preneha obstajati
   outcomeYear: number | null;
 };
@@ -52,10 +56,16 @@ export function conflictStatus(iso: string): "war" | "conflict" | null {
   return now.some((c) => (c.recent[String(DATA.maxYear)] ?? 0) >= 1000) ? "war" : "conflict";
 }
 
+/** Konflikti države; razvrščeni po tem, ali država v njih sodeluje zdaj, nato po koncu njene udeležbe. */
 export function conflictsOf(iso: string): Conflict[] {
+  const lastYear = (c: Conflict) => c.members[iso]?.years.at(-1)?.[1] ?? c.last;
   return DATA.conflicts
     .filter((c) => involved(c, iso))
-    .sort((x, y) => Number(y.ongoing) - Number(x.ongoing) || y.last - x.last || y.deaths - x.deaths);
+    .sort((x, y) => Number(Boolean(y.members[iso]?.now)) - Number(Boolean(x.members[iso]?.now)) || lastYear(y) - lastYear(x) || y.deaths - x.deaths);
+}
+
+export function conflictById(id: number): Conflict | undefined {
+  return DATA.conflicts.find((c) => c.id === id);
 }
 
 /* ---------------- Odnosi ---------------- */

@@ -11,13 +11,14 @@ import type { SvgIconComponent } from "@mui/icons-material";
 import { useI18n } from "../i18n";
 import type { CountryDetail, Economy } from "../../lib/economies";
 import type { Conflict, Equipment, Relation, RelationLevel } from "../../lib/defense";
+import type { WarDetails } from "../../lib/warDetails";
 import { Figure, LevelLine } from "./CountryCharts";
 import { WikiSection } from "./ProfileTabs";
 
 type DefenseData = {
   status: "war" | "conflict" | null;
   maxYear: number;
-  conflicts: Omit<Conflict, "byYear">[];
+  conflicts: (Omit<Conflict, "byYear" | "members"> & { member: Conflict["members"][string] | null })[];
   conflictCount: number;
   relations: Relation[];
   memberships: { id: string; name: string; kind: "military" | "political" }[];
@@ -50,17 +51,35 @@ function ConflictCard({ c, iso2, nameOf, maxYear }: { c: DefenseData["conflicts"
   const actor = (name: string, isos: string[]) =>
     /^Government of /.test(name) && isos.length === 1 ? nameOf(isos[0]) : name.replace(/^Government of /, "").replace(/ \(.*?\)$/, "");
   const sideFlags = (list: string[]) => list.map((i) => <Tooltip key={i} title={nameOf(i)}>{flag(i, 18)}</Tooltip>);
-  const mySide = c.a.includes(iso2) || c.a2.includes(iso2) ? "A" : "B";
+  const m = c.member;
+  const mySide = m?.side ?? (c.a.includes(iso2) || c.a2.includes(iso2) ? "A" : "B");
+  // Strani konflikta ob udeležbi države (npr. Slovenija v Afganistanu 2006–2014), ne nujno današnje.
+  const past = m && !m.now;
+  const nameA = past ? actor(m.sideA, []) : actor(c.sideA, c.aNow.length ? c.aNow : c.a);
+  const nameB = past ? actor(m.sideB, []) : actor(c.sideB, c.bNow.length ? c.bNow : c.b);
+  const yrs = m?.years.map(([f, to]) => (f === to ? `${f}` : `${f}–${to}`)).join(", ");
+  const own = c.ged?.byIso[iso2];
+  const sideDeaths = c.ged ? (mySide === "A" ? c.ged.a : c.ged.b) : 0;
   return (
     <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(148,163,184,0.06)", borderLeft: `3px solid ${c.ongoing ? DEATH : "rgba(148,163,184,0.35)"}` }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", alignItems: "baseline" }}>
         <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          {actor(c.sideA, c.aNow.length ? c.aNow : c.a)} <Box component="span" sx={{ color: "text.secondary", fontWeight: 400 }}>{t("def.vs")}</Box> {actor(c.sideB, c.bNow.length ? c.bNow : c.b)}
+          {nameA} <Box component="span" sx={{ color: "text.secondary", fontWeight: 400 }}>{t("def.vs")}</Box> {nameB}
         </Typography>
         <Typography variant="caption" sx={{ fontWeight: 700, color: c.ongoing ? DEATH : "text.secondary" }}>
           {c.ongoing ? t("def.ongoing", { from: c.first }) : `${c.first}–${c.last}`}
         </Typography>
       </Box>
+      {m && (
+        <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
+          <Box component="span" sx={{ fontWeight: 700, color: m.role === "primary" ? "#fca5a5" : "#93c5fd" }}>
+            {t(m.role === "primary" ? "def.role.primary" : "def.role.support", { side: m.side === "A" ? nameA : nameB })}
+          </Box>
+          {" · "}
+          {t("def.participation", { years: yrs ?? "" })}
+          {past && c.ongoing && <Box component="span" sx={{ color: "text.secondary" }}> · {t("def.leftOngoing", { year: m.years.at(-1)![1] })}</Box>}
+        </Typography>
+      )}
       <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mt: 0.75, alignItems: "center" }}>
         <Chip size="small" label={tr(`def.type.${c.type}`)} variant="outlined" sx={{ height: 20, fontSize: 11 }} />
         <Chip size="small" label={c.inc === 1 ? t("def.inc.territory", { name: c.territory || "–" }) : c.inc === 2 ? t("def.inc.government") : t("def.inc.both")} variant="outlined" sx={{ height: 20, fontSize: 11 }} />
@@ -107,6 +126,104 @@ function ConflictCard({ c, iso2, nameOf, maxYear }: { c: DefenseData["conflicts"
           </Typography>
         </Box>
       </Box>
+      {c.ged && (sideDeaths > 0 || c.ged.civ > 0) && (
+        <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mt: 1 }}>
+          {own ? <Stat label={t("def.ged.own", { name: nameOf(iso2) })} value={n(own)} color={DEATH} /> : null}
+          {sideDeaths > 0 && own !== sideDeaths && <Stat label={t("def.ged.side", { side: mySide === "A" ? nameA : nameB })} value={n(sideDeaths)} />}
+          {c.ged.civ > 0 && <Stat label={t("def.ged.civ")} value={n(c.ged.civ)} />}
+          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "flex-end" }}>
+            {t("def.ged.period", { from: c.ged.from, to: c.ged.to })}
+          </Typography>
+        </Box>
+      )}
+      {m && <WarBlock iso2={iso2} id={c.id} name={nameOf(iso2)} />}
+    </Box>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+        {label}
+      </Typography>
+      <Typography sx={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color }}>{value}</Typography>
+    </Box>
+  );
+}
+
+/** Napotene sile, mrtvi in ranjeni iz infoboxa vojne na Wikipediji (naloži se na zahtevo). */
+function WarBlock({ iso2, id, name }: { iso2: string; id: number; name: string }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"idle" | "loading" | "done">("idle");
+  const [d, setD] = useState<WarDetails | null>(null);
+  const load = () => {
+    setState("loading");
+    fetch(`/api/defense/war?iso2=${iso2}&id=${id}`)
+      .then((r) => r.json())
+      .then((b) => setD(b.details ?? null))
+      .catch(() => setD(null))
+      .finally(() => setState("done"));
+  };
+  if (state === "idle")
+    return (
+      <Button size="small" onClick={load} sx={{ mt: 0.5, px: 0.5, textTransform: "none" }}>
+        {t("def.war.load")}
+      </Button>
+    );
+  if (state === "loading")
+    return (
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+        {t("def.war.loading")}
+      </Typography>
+    );
+  if (!d)
+    return (
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+        {t("def.war.none")}
+      </Typography>
+    );
+  const text = (s: string | null) => (s ? <Typography variant="caption" component="div" sx={{ whiteSpace: "pre-line", maxHeight: 160, overflow: "auto" }}>{s}</Typography> : <Typography variant="caption" color="text.secondary">–</Typography>);
+  const separate = d.ownColumn || d.countryLines.length > 0;
+  return (
+    <Box sx={{ mt: 1, p: 1, borderRadius: 1.5, bgcolor: "rgba(148,163,184,0.06)" }}>
+      <Typography variant="caption" sx={{ fontWeight: 700, display: "block", mb: 0.5 }}>
+        {t("def.war.title")}
+      </Typography>
+      {d.countryLines.length > 0 && (
+        <Box sx={{ mb: 1 }}>
+          {d.countryLines.map((l) => (
+            <Typography key={l} variant="body2" sx={{ fontWeight: 600 }}>
+              {l}
+            </Typography>
+          ))}
+        </Box>
+      )}
+      {!separate && (
+        <Alert severity="info" sx={{ py: 0, mb: 1, fontSize: 12 }}>
+          {t("def.war.noSeparate", { name })}
+        </Alert>
+      )}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            {d.ownColumn ? t("def.war.strength") : t("def.war.strengthSide")}
+          </Typography>
+          {text(d.strength)}
+        </Box>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            {d.ownColumn ? t("def.war.casualties") : t("def.war.casualtiesSide")}
+          </Typography>
+          {text(d.casualties)}
+        </Box>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+        {t("def.war.source")}{" "}
+        <Link href={d.url} target="_blank" rel="noopener">
+          {d.title}
+        </Link>
+      </Typography>
     </Box>
   );
 }

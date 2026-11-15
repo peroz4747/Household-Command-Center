@@ -15,7 +15,8 @@ export async function GET(req: Request) {
     {
       status: conflictStatus(iso2),
       maxYear: CONFLICT_MAX_YEAR,
-      conflicts: conflicts.slice(0, 40).map(({ byYear: _byYear, ...c }) => c),
+      // Za prikaz le udeležba izbrane države (ne vseh članic koalicij).
+      conflicts: conflicts.slice(0, 40).map(({ byYear: _byYear, members, ...c }) => ({ ...c, member: members[iso2] ?? null })),
       conflictCount: conflicts.length,
       relations: relationsOf(iso2, all.length > 100 ? all : []),
       memberships: membershipsOf(iso2),
