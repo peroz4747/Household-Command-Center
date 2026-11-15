@@ -94,7 +94,7 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
           .width(el.clientWidth)
           .height(el.clientHeight);
         (g.globeMaterial() as InstanceType<typeof THREE.MeshPhongMaterial>).color = new THREE.Color(OCEAN);
-        g.pointOfView({ lat: 44, lng: 15, altitude: 2.2 }, 0);
+        g.pointOfView({ lat: 44, lng: 15, altitude: 1.6 }, 0);
         const controls = g.controls();
         controls.autoRotate = true;
         controls.autoRotateSpeed = 0.35;
