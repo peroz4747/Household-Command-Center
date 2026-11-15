@@ -23,6 +23,7 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import { useI18n } from "../i18n";
 import type { EconomiesData, Economy } from "../../lib/economies";
+import CountryDialog from "./CountryDialog";
 
 const UP = "#22c55e";
 const DOWN = "#f87171";
@@ -66,6 +67,7 @@ export default function WorldEconomies() {
   const [onlyQuarterly, setOnlyQuarterly] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "gdpUsd", dir: "desc" });
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState<Economy | null>(null);
 
   useEffect(() => {
     fetch("/api/economies", { cache: "no-store" })
@@ -128,7 +130,12 @@ export default function WorldEconomies() {
     </TableCell>
   );
   const row = (e: Economy, pinned = false) => (
-    <TableRow key={e.iso2 + (pinned ? "-pin" : "")} hover sx={e.iso2 === HOME ? { bgcolor: "rgba(57,135,229,0.12)" } : undefined}>
+    <TableRow
+      key={e.iso2 + (pinned ? "-pin" : "")}
+      hover
+      onClick={() => setOpen(e)}
+      sx={{ cursor: "pointer", ...(e.iso2 === HOME ? { bgcolor: "rgba(57,135,229,0.12)" } : {}) }}
+    >
       <TableCell sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{ranked.gdp.get(e.iso2) ?? "–"}</TableCell>
       <TableCell>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -181,8 +188,11 @@ export default function WorldEconomies() {
             <Typography variant="h6" sx={{ mt: 1, fontWeight: 700 }}>
               {t("econ.title")}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {t("econ.source", { year: data?.items.find((e) => e.gdpYear)?.gdpYear ?? "–" })}
+            </Typography>
+            <Typography variant="caption" color="secondary">
+              {t("econ.clickHint")}
             </Typography>
           </Box>
           {data && si && (
@@ -277,6 +287,7 @@ export default function WorldEconomies() {
           </>
         )}
       </CardContent>
+      {open && <CountryDialog economy={open} name={nameOf(open)} ranks={{ gdp: ranked.gdp.get(open.iso2), pc: ranked.pc.get(open.iso2) }} onClose={() => setOpen(null)} />}
     </Card>
   );
 }

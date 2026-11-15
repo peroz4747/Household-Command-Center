@@ -3,7 +3,6 @@ import LightbulbIcon from "@mui/icons-material/Lightbulb";
 import WeatherSummary from "./components/WeatherSummary";
 import CalendarTimeline from "./components/CalendarTimeline";
 import TravelHint from "./components/TravelHint";
-import MarketOverview from "./components/MarketOverview";
 import WorldEconomies from "./components/WorldEconomies";
 import MealPlanner from "./components/MealPlanner";
 import ClientDashboard from "./components/ClientDashboard";
@@ -188,11 +187,6 @@ export default async function Home() {
           <TravelHint />
           <CalendarTimeline />
         </Box>
-      </Box>
-
-      {/* BORZA (cela širina) */}
-      <Box sx={{ mt: 3 }}>
-        <MarketOverview />
       </Box>
 
       {/* GOSPODARSTVA SVETA (cela širina) */}

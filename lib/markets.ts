@@ -1,5 +1,7 @@
 // Borzni pregled iz Yahoo Finance (javni "chart" API, brez ključa). Seznam lahko povozi MARKET_SYMBOLS
 // v .env (npr. "^GSPC=S&P 500,AAPL=Apple"). Cene so z zamikom borze (do ~15 min).
+import { COUNTRY_MARKETS } from "./countryMarkets";
+
 export type MarketRange = "1d" | "1mo" | "1y";
 export type MarketQuote = {
   symbol: string;
@@ -90,7 +92,25 @@ async function quote(symbol: string, name: string, group: MarketQuote["group"], 
 }
 
 export async function getMarkets(range: MarketRange): Promise<MarketQuote[]> {
-  const list = symbols();
+  return getQuotes(symbols(), range);
+}
+
+/** Trg države: indeksi, največja podjetja in tečaj EUR do lokalne valute (če ni evro). */
+export async function getCountryMarket(iso2: string, range: MarketRange): Promise<MarketQuote[]> {
+  const m = COUNTRY_MARKETS[iso2];
+  if (!m) return [];
+  const list: [string, string, MarketQuote["group"]][] = [...m.indices.map(([s, n]) => [s, n, "index"] as [string, string, MarketQuote["group"]]), ...m.stocks.map(([s, n]) => [s, n, "stock"] as [string, string, MarketQuote["group"]])];
+  const quotes = await getQuotes(list, range);
+  // Valuta indeksa = valuta države (pri ^PX Yahoo navaja USD, zato raje prvo delnico, če obstaja).
+  const cur = (quotes.find((q) => q.group === "stock" && q.currency)?.currency ?? quotes.find((q) => q.currency)?.currency ?? "").toUpperCase();
+  if (cur && cur !== "EUR" && /^[A-Z]{3}$/.test(cur)) {
+    const [fx] = await getQuotes([[`EUR${cur}=X`, `EUR/${cur}`, "fx"]], range);
+    if (fx.price !== null) quotes.push(fx);
+  }
+  return quotes;
+}
+
+export async function getQuotes(list: [string, string, MarketQuote["group"]][], range: MarketRange): Promise<MarketQuote[]> {
   const out: MarketQuote[] = new Array(list.length);
   let next = 0;
   await Promise.all(

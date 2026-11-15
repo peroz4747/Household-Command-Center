@@ -72,7 +72,7 @@ function Sparkline({ q, range, color, onHover }: { q: MarketQuote; range: Market
   );
 }
 
-function Tile({ q, range }: { q: MarketQuote; range: MarketRange }) {
+export function Tile({ q, range }: { q: MarketQuote; range: MarketRange }) {
   const { t, locale } = useI18n();
   const [hover, setHover] = useState<[number, number] | null>(null);
   const tr = t as unknown as (key: string) => string;
@@ -168,7 +168,7 @@ function ljseOpen(now: Date): boolean {
   return !["Sat", "Sun"].includes(p.weekday) && minutes >= 9 * 60 + 15 && minutes < 15 * 60 + 30;
 }
 
-function SloveniaMarket() {
+export function SloveniaMarket() {
   const { t, locale } = useI18n();
   const [data, setData] = useState<LjseData | null>(null);
   const [error, setError] = useState(false);

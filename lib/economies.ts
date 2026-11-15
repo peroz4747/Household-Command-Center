@@ -16,6 +16,7 @@ export type Economy = {
   quarterSource: "OECD" | "Eurostat" | null;
 };
 export type EconomiesData = { items: Economy[]; worldGdpUsd: number | null; fetchedAt: string };
+const quarterHistory = new Map<string, { source: "OECD" | "Eurostat"; history: QuarterPoint[] }>();
 
 const WB = "https://api.worldbank.org/v2";
 const CACHE_MS = 12 * 3_600_000;
@@ -23,7 +24,7 @@ let cache: { at: number; data: EconomiesData } | null = null;
 let inFlight: Promise<EconomiesData> | null = null;
 
 async function json(url: string, headers: Record<string, string> = {}): Promise<any> {
-  const res = await fetch(url, { cache: "no-store", headers: { "User-Agent": "Mozilla/5.0 (HouseholdCommandCenter)", ...headers }, signal: AbortSignal.timeout(60_000) });
+  const res = await fetch(url, { cache: "no-store", headers: { "User-Agent": "Mozilla/5.0 (HouseholdCommandCenter)", ...headers }, signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
   return res.json();
 }
@@ -35,11 +36,11 @@ async function wbIndicator(code: string): Promise<Map<string, { value: number; d
   return out;
 }
 
-type Quarterly = { qoq: number | null; yoy: number | null; quarter: string; source: "OECD" | "Eurostat" };
+type Quarterly = { qoq: number | null; yoy: number | null; quarter: string; source: "OECD" | "Eurostat"; history: QuarterPoint[] };
 
 // OECD brez brskalniškega User-Agent vrne 500.
 async function oecdQuarterly(): Promise<Map<string, Quarterly>> {
-  const since = `${new Date().getUTCFullYear() - 2}-Q1`;
+  const since = `${new Date().getUTCFullYear() - 3}-Q1`;
   const url = `https://sdmx.oecd.org/public/rest/data/OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_OECD,/Q.Y..S1.S1.B1GQ._Z._Z._Z.PC.L.G1+GY.T0102?startPeriod=${since}`;
   const res = await fetch(url, { cache: "no-store", headers: { Accept: "application/vnd.sdmx.data+csv; charset=utf-8", "User-Agent": "Mozilla/5.0 (HouseholdCommandCenter)" }, signal: AbortSignal.timeout(60_000) });
   if (!res.ok) throw new Error(`OECD HTTP ${res.status}`);
@@ -62,7 +63,8 @@ async function oecdQuarterly(): Promise<Map<string, Quarterly>> {
     const q = [...quarters.keys()].sort().filter((t) => raw.get(`${area}|${t}`)?.G1 !== undefined).at(-1);
     if (!q) continue;
     const r = raw.get(`${area}|${q}`)!;
-    out.set(area, { qoq: r.G1 ?? null, yoy: r.GY ?? null, quarter: q, source: "OECD" });
+    const history = [...quarters.keys()].sort().map((t) => ({ quarter: t, qoq: raw.get(`${area}|${t}`)?.G1 ?? null, yoy: raw.get(`${area}|${t}`)?.GY ?? null }));
+    out.set(area, { qoq: r.G1 ?? null, yoy: r.GY ?? null, quarter: q, source: "OECD", history });
   }
   return out;
 }
@@ -71,7 +73,7 @@ const EUROSTAT_EXTRA: Record<string, string> = { BG: "BGR", HR: "HRV", CY: "CYP"
 
 async function eurostatQuarterly(): Promise<Map<string, Quarterly>> {
   const geo = Object.keys(EUROSTAT_EXTRA).map((g) => `&geo=${g}`).join("");
-  const since = `${new Date().getUTCFullYear() - 1}-Q1`;
+  const since = `${new Date().getUTCFullYear() - 3}-Q1`;
   const d = await json(`https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/namq_10_gdp?format=JSON&unit=CLV_PCH_PRE&unit=CLV_PCH_SM&s_adj=SCA&na_item=B1GQ${geo}&sinceTimePeriod=${since}&lang=EN`);
   const dims: string[] = d.id;
   const size: number[] = d.size;
@@ -86,7 +88,8 @@ async function eurostatQuarterly(): Promise<Map<string, Quarterly>> {
   for (const [g, gi] of Object.entries(index("geo"))) {
     const at = (unit: string, t: string) => value({ unit: index("unit")[unit], geo: gi, time: index("time")[t] });
     const q = times.filter((t) => at("CLV_PCH_PRE", t) !== undefined).at(-1);
-    if (q) out.set(EUROSTAT_EXTRA[g], { qoq: at("CLV_PCH_PRE", q) ?? null, yoy: at("CLV_PCH_SM", q) ?? null, quarter: q, source: "Eurostat" });
+    const history = times.map((t) => ({ quarter: t, qoq: at("CLV_PCH_PRE", t) ?? null, yoy: at("CLV_PCH_SM", t) ?? null })).filter((h) => h.qoq !== null || h.yoy !== null);
+    if (q) out.set(EUROSTAT_EXTRA[g], { qoq: at("CLV_PCH_PRE", q) ?? null, yoy: at("CLV_PCH_SM", q) ?? null, quarter: q, source: "Eurostat", history });
   }
   return out;
 }
@@ -105,6 +108,7 @@ async function load(): Promise<EconomiesData> {
     if (c.region?.id === "NA" || !c.iso2Code || !/^[A-Z]{2}$/.test(c.iso2Code)) continue; // agregati (svet, regije ...)
     const iso3 = String(c.id);
     const q = oecd.get(iso3) ?? eurostat.get(iso3) ?? null;
+    if (q) quarterHistory.set(iso3, { source: q.source, history: q.history.slice(-12) });
     items.push({
       iso2: c.iso2Code,
       iso3,
@@ -129,7 +133,9 @@ export async function getEconomies(): Promise<EconomiesData> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
   inFlight ??= load()
     .then((data) => {
-      cache = { at: Date.now(), data };
+      // Če OECD ni odgovoril (ni četrtletnih podatkov), poskusimo znova čez 30 min, ne čez 12 h.
+      const partial = data.items.filter((e) => e.qoq !== null).length < 20;
+      cache = { at: partial ? Date.now() - CACHE_MS + 30 * 60_000 : Date.now(), data };
       return data;
     })
     .finally(() => (inFlight = null));
@@ -139,4 +145,79 @@ export async function getEconomies(): Promise<EconomiesData> {
     if (cache) return cache.data;
     throw e;
   }
+}
+
+/* ---------------- Podrobnosti ene države (pojavno okno) ---------------- */
+
+export type YearPoint = { year: string; value: number };
+export type QuarterPoint = { quarter: string; qoq: number | null; yoy: number | null };
+export type CountryDetail = {
+  iso3: string;
+  incomeLevel: string | null;
+  capital: string | null;
+  gdp: YearPoint[]; // USD, tekoče cene
+  gdpPerCapita: YearPoint[];
+  growth: YearPoint[]; // realna rast, %
+  quarters: QuarterPoint[]; // zadnja 3 leta
+  quarterSource: "OECD" | "Eurostat" | null;
+  population: YearPoint | null;
+  inflation: YearPoint | null; // CPI, %
+  unemployment: YearPoint | null; // % aktivnega prebivalstva
+  exports: YearPoint | null; // izvoz, % BDP
+};
+
+const detailCache = new Map<string, { at: number; data: CountryDetail }>();
+
+/** Svetovna banka občasno vrne napako ali prazen odgovor; en ponovni poskus. */
+const wbJson = (url: string) => json(url).catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => json(url))).catch(() => null);
+
+async function wbHistory(iso3: string, code: string, n = 20): Promise<YearPoint[]> {
+  const body = await wbJson(`${WB}/country/${iso3}/indicator/${code}?format=json&mrv=${n}&per_page=100`);
+  return ((body?.[1] ?? []) as any[])
+    .filter((r) => r.value !== null)
+    .map((r) => ({ year: String(r.date), value: Number(r.value) }))
+    .sort((a, b) => a.year.localeCompare(b.year));
+}
+
+async function wbLatest(iso3: string, code: string): Promise<YearPoint | null> {
+  const body = await wbJson(`${WB}/country/${iso3}/indicator/${code}?format=json&mrnev=1`);
+  const r = body?.[1]?.[0];
+  return r && r.value !== null ? { year: String(r.date), value: Number(r.value) } : null;
+}
+
+export async function getCountryDetail(iso3: string): Promise<CountryDetail | null> {
+  const had = detailCache.get(iso3);
+  if (had && Date.now() - had.at < CACHE_MS) return had.data;
+  const meta = await wbJson(`${WB}/country/${iso3}?format=json`);
+  const c = meta?.[1]?.[0];
+  if (!c || c.region?.id === "NA") return null;
+  // Četrtletna zgodovina je iz skupnega prenosa (OECD dovoli le nekaj poizvedb na uro).
+  await getEconomies().catch(() => null);
+  const q = quarterHistory.get(iso3);
+  const [gdp, gdpPerCapita, growth, population, inflation, unemployment, exports] = await Promise.all([
+    wbHistory(iso3, "NY.GDP.MKTP.CD"),
+    wbHistory(iso3, "NY.GDP.PCAP.CD"),
+    wbHistory(iso3, "NY.GDP.MKTP.KD.ZG"),
+    wbLatest(iso3, "SP.POP.TOTL"),
+    wbLatest(iso3, "FP.CPI.TOTL.ZG"),
+    wbLatest(iso3, "SL.UEM.TOTL.ZS"),
+    wbLatest(iso3, "NE.EXP.GNFS.ZS"),
+  ]);
+  const data: CountryDetail = {
+    iso3,
+    incomeLevel: c.incomeLevel?.value ? String(c.incomeLevel.value) : null,
+    capital: c.capitalCity ? String(c.capitalCity) : null,
+    gdp,
+    gdpPerCapita,
+    growth,
+    quarters: q?.history ?? [],
+    quarterSource: q?.source ?? null,
+    population,
+    inflation,
+    unemployment,
+    exports,
+  };
+  if (detailCache.size > 100) detailCache.clear();
+  detailCache.set(iso3, { at: Date.now(), data });
+  return data;
 }
