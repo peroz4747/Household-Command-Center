@@ -30,6 +30,7 @@ type State = {
   hotAlerted?: string[]; // senzorji, o katerih pregrevanju smo poslali obvestilo
 };
 
+const DASHBOARD_URL = "https://dashboard.home/";
 // Meje pregrevanja po vrsti senzorja (°C); za neznane senzorje meja gonilnika - 5 °C ali 80 °C.
 const SENSOR_HOT: Record<string, number> = { coretemp: 85, k10temp: 85, zenpower: 85, acpitz: 80, pch: 85, nvme: 75, drivetemp: 55, amdgpu: 90 };
 const sensorLimit = (s: TempSensor) => SENSOR_HOT[s.chip.replace(/_.*$/, "")] ?? (s.max ? s.max - 5 : 80);
@@ -73,7 +74,6 @@ const sl = translator("sl");
 const TICK_MS = 5 * 60_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-const DASHBOARD_URL = "https://dashboard.home/";
 
 type NtfyAction = { action: "view"; label: string; url: string; clear?: boolean };
 
