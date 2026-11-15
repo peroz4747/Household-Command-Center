@@ -10,6 +10,8 @@ import {
   InputAdornment,
   MenuItem,
   Switch,
+  ToggleButton,
+  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -21,9 +23,15 @@ import {
   Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import PublicIcon from "@mui/icons-material/Public";
+import dynamic from "next/dynamic";
 import { useI18n } from "../i18n";
 import type { EconomiesData, Economy } from "../../lib/economies";
 import CountryDialog from "./CountryDialog";
+
+// three.js je velik, zato se globus naloži šele, ko ga uporabnik odpre.
+const WorldGlobe = dynamic(() => import("./WorldGlobe"), { ssr: false });
 
 const UP = "#22c55e";
 const DOWN = "#f87171";
@@ -68,6 +76,7 @@ export default function WorldEconomies() {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "gdpUsd", dir: "desc" });
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Economy | null>(null);
+  const [view, setView] = useState<"list" | "globe">("list");
 
   useEffect(() => {
     fetch("/api/economies", { cache: "no-store" })
@@ -222,6 +231,20 @@ export default function WorldEconomies() {
         </Box>
 
         <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", alignItems: "center", mb: 1 }}>
+          <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)}>
+            <Tooltip title={t("econ.view.list")}>
+              <ToggleButton value="list" aria-label={t("econ.view.list")}>
+                <ViewListIcon fontSize="small" />
+              </ToggleButton>
+            </Tooltip>
+            <Tooltip title={t("econ.view.globe")}>
+              <ToggleButton value="globe" aria-label={t("econ.view.globe")}>
+                <PublicIcon fontSize="small" />
+              </ToggleButton>
+            </Tooltip>
+          </ToggleButtonGroup>
+          {view === "list" && (
+          <>
           <TextField
             size="small"
             placeholder={t("econ.search")}
@@ -239,9 +262,13 @@ export default function WorldEconomies() {
             ))}
           </TextField>
           <FormControlLabel control={<Switch checked={onlyQuarterly} onChange={(e) => setOnlyQuarterly(e.target.checked)} />} label={t("econ.onlyQuarterly")} />
+          </>
+          )}
         </Box>
 
-        {!data ? (
+        {data && view === "globe" ? (
+          <WorldGlobe items={data.items} onSelect={setOpen} />
+        ) : !data ? (
           <Typography color="text.secondary">{t("common.loading")}</Typography>
         ) : (
           <>

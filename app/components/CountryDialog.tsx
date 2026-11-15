@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Box, Dialog, DialogContent, DialogTitle, IconButton, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Button, Dialog, DialogContent, DialogTitle, IconButton, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery, useTheme } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import { useI18n } from "../i18n";
 import type { CountryDetail, Economy } from "../../lib/economies";
+import type { CountryInfo, InfoText } from "../../lib/countryInfo";
 import type { MarketQuote, MarketRange } from "../../lib/markets";
 import { COUNTRY_MARKETS } from "../../lib/countryMarkets";
 import { SloveniaMarket, Tile } from "./MarketOverview";
@@ -219,6 +220,79 @@ function CountryMarket({ iso2 }: { iso2: string }) {
   );
 }
 
+const PREVIEW = 600;
+
+function InfoBlock({ heading, info }: { heading: string; info: InfoText }) {
+  const { t, lang } = useI18n();
+  const [more, setMore] = useState(false);
+  const long = info.text.length > PREVIEW + 100;
+  const shown = !long || more ? info.text : `${info.text.slice(0, info.text.lastIndexOf(" ", PREVIEW))} …`;
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+        {heading}
+        {info.lang !== lang && (
+          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontWeight: 400 }}>
+            {t("econ.info.otherLang", { lang: info.lang.toUpperCase() })}
+          </Typography>
+        )}
+      </Typography>
+      {shown.split(/\n{2,}/).map((para, i) => (
+        <Typography key={i} variant="body2" sx={{ mb: 1, whiteSpace: "pre-line", lineHeight: 1.6, color: "text.secondary" }}>
+          {para}
+        </Typography>
+      ))}
+      <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        {long && (
+          <Button size="small" onClick={() => setMore(!more)} sx={{ px: 0, minWidth: 0 }}>
+            {more ? t("econ.info.less") : t("econ.info.more")}
+          </Button>
+        )}
+        <Button size="small" href={info.url} target="_blank" rel="noreferrer" sx={{ textTransform: "none" }}>
+          {t("econ.info.source", { title: info.title })} ↗
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+function CountryInfoSection({ iso2 }: { iso2: string }) {
+  const { t, lang } = useI18n();
+  const [info, setInfo] = useState<{ key: string; data: CountryInfo | null } | null>(null);
+  const key = `${iso2}|${lang}`;
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/economies/info?iso2=${iso2}&lang=${lang}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => alive && setInfo({ key: `${iso2}|${lang}`, data: d }))
+      .catch(() => alive && setInfo({ key: `${iso2}|${lang}`, data: null }));
+    return () => {
+      alive = false;
+    };
+  }, [iso2, lang]);
+  const data = info?.key === key ? info.data : undefined;
+  return (
+    <Box>
+      <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        {t("econ.info.title")}
+      </Typography>
+      {data === undefined ? (
+        <Typography color="text.secondary">{t("common.loading")}</Typography>
+      ) : !data?.intro && !data?.economy ? (
+        <Typography color="text.secondary">{t("econ.info.none")}</Typography>
+      ) : (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
+          {data.intro && <InfoBlock heading={t("econ.info.about")} info={data.intro} />}
+          {data.economy && <InfoBlock heading={t("econ.info.economy")} info={data.economy} />}
+        </Box>
+      )}
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+        {t("econ.info.license")}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function CountryDialog({ economy, name, ranks, onClose }: { economy: Economy; name: string; ranks: { gdp?: number; pc?: number }; onClose: () => void }) {
   const { t, locale } = useI18n();
   const theme = useTheme();
@@ -317,6 +391,8 @@ export default function CountryDialog({ economy, name, ranks, onClose }: { econo
             </Box>
           </Box>
         )}
+
+        <CountryInfoSection iso2={economy.iso2} />
 
         <Box>
           <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
