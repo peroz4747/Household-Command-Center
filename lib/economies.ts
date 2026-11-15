@@ -1,3 +1,4 @@
+import { conflictStatus } from "./defense";
 // Gospodarstva sveta: BDP in BDP na prebivalca (Svetovna banka, zadnje znano leto), letna realna rast
 // in četrtletna rast (OECD za ~45 držav, Eurostat za preostale članice EU). Drugje četrtletnih podatkov ni.
 export type Economy = {
@@ -14,6 +15,10 @@ export type Economy = {
   yoyQ: number | null; // rast glede na isto četrtletje lani, %
   quarter: string | null; // npr. 2026-Q3
   quarterSource: "OECD" | "Eurostat" | null;
+  milUsd: number | null; // izdatki za obrambo, tekoči USD (SIPRI prek Svetovne banke)
+  milPct: number | null; // izdatki za obrambo, % BDP
+  armedForces: number | null; // oborožene sile, osebje
+  conflict: "war" | "conflict" | null; // trenutni oboroženi konflikt države (UCDP): vojna ≥1000 žrtev v letu
 };
 export type EconomiesData = { items: Economy[]; worldGdpUsd: number | null; fetchedAt: string };
 
@@ -32,7 +37,13 @@ async function json(url: string, headers: Record<string, string> = {}): Promise<
 async function wbBulk(code: string): Promise<Map<string, YearPoint[]>> {
   const to = new Date().getUTCFullYear() - 1;
   const url = `${WB}/country/all/indicator/${code}?format=json&date=${to - 20}:${to}&per_page=20000`;
-  const body = await json(url).catch(() => new Promise((r) => setTimeout(r, 2000)).then(() => json(url)));
+  // Svetovna banka pogosto vrne 503; do 4 poskusi.
+  let body: any = null;
+  for (let attempt = 0; attempt < 4 && !body; attempt += 1) {
+    body = await json(url).catch(() => null);
+    if (!body) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+  if (!body) throw new Error(`World Bank ${code}`);
   const out = new Map<string, YearPoint[]>();
   for (const r of body?.[1] ?? []) {
     if (r.value === null || !r.countryiso3code) continue;
@@ -103,7 +114,8 @@ async function eurostatQuarterly(): Promise<Map<string, Quarterly>> {
 }
 
 async function load(): Promise<EconomiesData> {
-  const [meta, gdp, pc, growth, pop, infl, unemp, exp, oecd, eurostat] = await Promise.all([
+  const empty = () => new Map<string, YearPoint[]>();
+  const [meta, gdp, pc, growth, pop, infl, unemp, exp, milUsd, milPct, forces, armsIn, armsOut, oecd, eurostat] = await Promise.all([
     json(`${WB}/country?format=json&per_page=400`),
     wbBulk("NY.GDP.MKTP.CD"),
     wbBulk("NY.GDP.PCAP.CD"),
@@ -111,7 +123,12 @@ async function load(): Promise<EconomiesData> {
     wbBulk("SP.POP.TOTL").catch(() => new Map<string, YearPoint[]>()),
     wbBulk("FP.CPI.TOTL.ZG").catch(() => new Map<string, YearPoint[]>()),
     wbBulk("SL.UEM.TOTL.ZS").catch(() => new Map<string, YearPoint[]>()),
-    wbBulk("NE.EXP.GNFS.ZS").catch(() => new Map<string, YearPoint[]>()),
+    wbBulk("NE.EXP.GNFS.ZS").catch(empty),
+    wbBulk("MS.MIL.XPND.CD").catch(empty),
+    wbBulk("MS.MIL.XPND.GD.ZS").catch(empty),
+    wbBulk("MS.MIL.TOTL.P1").catch(empty),
+    wbBulk("MS.MIL.MPRT.KD").catch(empty),
+    wbBulk("MS.MIL.XPRT.KD").catch(empty),
     oecdQuarterly().catch(() => new Map<string, Quarterly>()),
     eurostatQuarterly().catch(() => new Map<string, Quarterly>()),
   ]);
@@ -136,6 +153,10 @@ async function load(): Promise<EconomiesData> {
       yoyQ: q?.yoy ?? null,
       quarter: q?.quarter ?? null,
       quarterSource: q?.source ?? null,
+      milUsd: lastOf(milUsd)?.value ?? null,
+      milPct: lastOf(milPct)?.value ?? null,
+      armedForces: lastOf(forces)?.value ?? null,
+      conflict: conflictStatus(String(c.iso2Code)),
     });
     nextDetails.set(iso3, {
       iso3,
@@ -147,6 +168,11 @@ async function load(): Promise<EconomiesData> {
       quarters: q?.history.slice(-12) ?? [],
       quarterSource: q?.source ?? null,
       population: lastOf(pop),
+      milSpending: milUsd.get(iso3) ?? [],
+      milPct: lastOf(milPct),
+      armedForces: lastOf(forces),
+      armsImports: lastOf(armsIn),
+      armsExports: lastOf(armsOut),
       inflation: lastOf(infl),
       unemployment: lastOf(unemp),
       exports: lastOf(exp),
@@ -189,6 +215,11 @@ export type CountryDetail = {
   quarters: QuarterPoint[]; // zadnja 3 leta
   quarterSource: "OECD" | "Eurostat" | null;
   population: YearPoint | null;
+  milSpending: YearPoint[]; // USD
+  milPct: YearPoint | null;
+  armedForces: YearPoint | null;
+  armsImports: YearPoint | null; // SIPRI TIV (konstantni USD 1990)
+  armsExports: YearPoint | null;
   inflation: YearPoint | null; // CPI, %
   unemployment: YearPoint | null; // % aktivnega prebivalstva
   exports: YearPoint | null; // izvoz, % BDP

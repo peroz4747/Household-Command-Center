@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, MenuItem, TextField, Typography } from "@mui/material";
+import { Box, ListSubheader, MenuItem, TextField, Typography } from "@mui/material";
 import { useI18n } from "../i18n";
 import type { Economy } from "../../lib/economies";
 
 // 3D globus (globe.gl na three.js): države obarvane po izbranem kazalniku, vrtenje z miško, klik odpre državo.
-// Barve: raven (BDP) = en moder odtenek od temnega do svetlega (logaritemsko); rast = oranžna (padec)
-// – siva (0) – modra (rast), ker rdeče-zelena ni berljiva za del ljudi z barvno slepoto.
-export type GlobeMetric = "gdpPerCapitaUsd" | "gdpUsd" | "growthYear" | "qoq";
+// Gospodarstvo: od rdeče (nizko / padec) prek rumene do zelene (visoko / rast), kot je želel uporabnik.
+// Obramba: en vijoličen odtenek (več ni ne dobro ne slabo); konflikti: rdeči odtenki.
+export type GlobeMetric = "gdpPerCapitaUsd" | "gdpUsd" | "growthYear" | "qoq" | "milPct" | "milUsd" | "armedForces" | "conflict";
+const ECONOMY: GlobeMetric[] = ["gdpPerCapitaUsd", "gdpUsd", "growthYear", "qoq"];
+const DEFENSE: GlobeMetric[] = ["conflict", "milPct", "milUsd", "armedForces"];
 
 const NO_DATA = "#243041";
 const OCEAN = "#0b1a33";
-const SEQ: [string, string] = ["#173a66", "#a7d8ff"];
-const NEG = "#e8743b";
-const MID = "#64748b";
-const POS = "#3987e5";
+const RED = "#dc2626";
+const YELLOW = "#eab308";
+const GREEN = "#16a34a";
+const MIL: [string, string] = ["#3b2a66", "#c4b5fd"];
+const WAR = "#b91c1c";
+const MINOR = "#f87171";
+const PEACE = "#334155";
 const CLAMP: Record<"growthYear" | "qoq", number> = { growthYear: 6, qoq: 1.5 };
 
 type Feature = { type: "Feature"; properties: { iso2: string; name: string }; geometry: unknown };
@@ -26,7 +31,7 @@ function mix(a: string, b: string, t: number) {
   return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * Math.max(0, Math.min(1, t)))).join(",")})`;
 }
 
-export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSelect: (e: Economy) => void }) {
+export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSelect: (e: Economy, tab?: "economy" | "defense") => void }) {
   const { t: tt, locale } = useI18n();
   const t = tt as unknown as (key: string, vars?: Record<string, string | number>) => string;
   const ref = useRef<HTMLDivElement>(null);
@@ -45,23 +50,42 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
 
   // Razpon za logaritemsko lestvico ravni.
   const range = useMemo(() => {
+    if (metric === "conflict") return { min: 0, max: 1, log: false };
     const vals = items.map((e) => e[metric]).filter((v): v is number => v !== null && v > 0);
-    return { min: Math.log10(Math.min(...vals)), max: Math.log10(Math.max(...vals)) };
+    // % BDP za obrambo linearno (ozek razpon), zneski in osebje logaritemsko.
+    const log = metric !== "milPct";
+    const f = (v: number) => (log ? Math.log10(v) : v);
+    return { min: f(Math.min(...vals)), max: metric === "milPct" ? Math.min(6, Math.max(...vals)) : f(Math.max(...vals)), log };
   }, [items, metric]);
+
+  const valueOf = (e: Economy | undefined): number | null => {
+    if (!e) return null;
+    if (metric === "conflict") return e.conflict === "war" ? 2 : e.conflict ? 1 : 0;
+    return e[metric];
+  };
+
+  const ramp = (t: number) => (t < 0.5 ? mix(RED, YELLOW, t * 2) : mix(YELLOW, GREEN, (t - 0.5) * 2));
 
   const colorOf = (v: number | null): string => {
     if (v === null) return NO_DATA;
+    if (metric === "conflict") return v === 2 ? WAR : v === 1 ? MINOR : PEACE;
     if (metric === "growthYear" || metric === "qoq") {
       const c = CLAMP[metric];
-      return v >= 0 ? mix(MID, POS, v / c) : mix(MID, NEG, -v / c);
+      return ramp(0.5 + Math.max(-1, Math.min(1, v / c)) / 2);
     }
-    return v > 0 ? mix(SEQ[0], SEQ[1], (Math.log10(v) - range.min) / Math.max(0.01, range.max - range.min)) : NO_DATA;
+    if (v <= 0) return NO_DATA;
+    const t = ((range.log ? Math.log10(v) : v) - range.min) / Math.max(0.01, range.max - range.min);
+    return DEFENSE.includes(metric) ? mix(MIL[0], MIL[1], t) : ramp(Math.max(0, Math.min(1, t)));
   };
 
   const fmt = (v: number | null) => {
     if (v === null) return t("econ.globe.noData");
+    if (metric === "conflict") return v === 2 ? t("econ.conflict.war") : v === 1 ? t("econ.conflict.minor") : t("econ.conflict.none");
     if (metric === "growthYear" || metric === "qoq") return `${v > 0 ? "+" : ""}${v.toLocaleString(locale, { maximumFractionDigits: 1 })} %`;
-    return v.toLocaleString(locale, { style: "currency", currency: "USD", notation: metric === "gdpUsd" ? "compact" : "standard", maximumFractionDigits: metric === "gdpUsd" ? 1 : 0 });
+    if (metric === "milPct") return `${v.toLocaleString(locale, { maximumFractionDigits: 1 })} %`;
+    if (metric === "armedForces") return v.toLocaleString(locale, { notation: "compact", maximumFractionDigits: 1 });
+    const compact = metric === "gdpUsd" || metric === "milUsd";
+    return v.toLocaleString(locale, { style: "currency", currency: "USD", notation: compact ? "compact" : "standard", maximumFractionDigits: compact ? 1 : 0 });
   };
 
   // Meje držav (Natural Earth 1:110m, poenostavljene; public/data/world.geojson).
@@ -129,7 +153,7 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
     const g = globe.current;
     if (!g) return;
     let hovered: Feature | null = null;
-    const valueOf = (f: Feature) => byIso.get(f.properties.iso2)?.[metric] ?? null;
+    const valueAt = (f: Feature) => valueOf(byIso.get(f.properties.iso2));
     const label = (f: Feature) => {
       const e = byIso.get(f.properties.iso2);
       let name = f.properties.name;
@@ -140,9 +164,9 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
       }
       const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
       return `<div style="background:rgba(15,23,42,.95);border:1px solid rgba(148,163,184,.3);border-radius:6px;padding:6px 8px;font:12px system-ui;color:#e2e8f0">
-        <b>${esc(name)}</b><br/>${esc(t(`econ.globe.metric.${metric}`))}: <b>${esc(fmt(valueOf(f)))}</b>${e ? `<br/><span style="color:#94a3b8">${esc(t("econ.globe.click"))}</span>` : ""}</div>`;
+        <b>${esc(name)}</b><br/>${esc(t(`econ.globe.metric.${metric}`))}: <b>${esc(fmt(valueAt(f)))}</b>${e ? `<br/><span style="color:#94a3b8">${esc(t("econ.globe.click"))}</span>` : ""}</div>`;
     };
-    g.polygonCapColor((f: Feature) => (f === hovered ? "#f8fafc" : colorOf(valueOf(f))))
+    g.polygonCapColor((f: Feature) => (f === hovered ? "#f8fafc" : colorOf(valueAt(f))))
       .polygonAltitude((f: Feature) => (f === hovered ? 0.03 : 0.008))
       .polygonLabel(label)
       .onPolygonHover((f: Feature | null) => {
@@ -152,22 +176,38 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
       })
       .onPolygonClick((f: Feature) => {
         const e = byIso.get(f.properties.iso2);
-        if (e) onSelect(e);
+        if (e) onSelect(e, DEFENSE.includes(metric) ? "defense" : "economy");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metric, byIso, features, locale]);
 
   const diverging = metric === "growthYear" || metric === "qoq";
-  const legendStops = diverging ? `linear-gradient(90deg, ${NEG}, ${MID}, ${POS})` : `linear-gradient(90deg, ${SEQ[0]}, ${SEQ[1]})`;
-  const legendLabels = diverging
-    ? [fmt(-CLAMP[metric as "qoq"]), "0 %", fmt(CLAMP[metric as "qoq"])]
-    : [fmt(10 ** range.min), fmt(10 ** ((range.min + range.max) / 2)), fmt(10 ** range.max)];
+  const back = (x: number) => (range.log ? 10 ** x : x);
+  const legendStops =
+    metric === "conflict"
+      ? `linear-gradient(90deg, ${PEACE} 0 33%, ${MINOR} 33% 66%, ${WAR} 66%)`
+      : DEFENSE.includes(metric)
+        ? `linear-gradient(90deg, ${MIL[0]}, ${MIL[1]})`
+        : `linear-gradient(90deg, ${RED}, ${YELLOW}, ${GREEN})`;
+  const legendLabels =
+    metric === "conflict"
+      ? [fmt(0), fmt(1), fmt(2)]
+      : diverging
+        ? [fmt(-CLAMP[metric as "qoq"]), "0 %", fmt(CLAMP[metric as "qoq"])]
+        : [fmt(back(range.min)), fmt(back((range.min + range.max) / 2)), `${fmt(back(range.max))}${metric === "milPct" ? "+" : ""}`];
 
   return (
     <Box>
       <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap", mb: 1 }}>
         <TextField select size="small" label={t("econ.globe.colorBy")} value={metric} onChange={(e) => setMetric(e.target.value as GlobeMetric)} sx={{ minWidth: 240 }}>
-          {(["gdpPerCapitaUsd", "gdpUsd", "growthYear", "qoq"] as GlobeMetric[]).map((m) => (
+          <ListSubheader>{t("econ.tab.economy")}</ListSubheader>
+          {ECONOMY.map((m) => (
+            <MenuItem key={m} value={m}>
+              {t(`econ.globe.metric.${m}`)}
+            </MenuItem>
+          ))}
+          <ListSubheader>{t("econ.tab.defense")}</ListSubheader>
+          {DEFENSE.map((m) => (
             <MenuItem key={m} value={m}>
               {t(`econ.globe.metric.${m}`)}
             </MenuItem>

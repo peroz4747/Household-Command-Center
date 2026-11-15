@@ -40,7 +40,7 @@ const BAR = "#3987e5"; // magnituda (BDP): en sam odtenek
 const HOME = "SI";
 const PAGE = 25;
 
-type SortKey = "gdpUsd" | "gdpPerCapitaUsd" | "growthYear" | "qoq" | "yoyQ" | "name";
+type SortKey = "gdpUsd" | "gdpPerCapitaUsd" | "growthYear" | "qoq" | "yoyQ" | "milPct" | "name";
 
 const REGIONS = [
   "Europe & Central Asia",
@@ -76,6 +76,11 @@ export default function WorldEconomies() {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "gdpUsd", dir: "desc" });
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Economy | null>(null);
+  const [openTab, setOpenTab] = useState<"economy" | "defense">("economy");
+  const show = (e: Economy, tab: "economy" | "defense" = "economy") => {
+    setOpenTab(tab);
+    setOpen(e);
+  };
   const [view, setView] = useState<"list" | "globe">("list");
 
   useEffect(() => {
@@ -142,7 +147,7 @@ export default function WorldEconomies() {
     <TableRow
       key={e.iso2 + (pinned ? "-pin" : "")}
       hover
-      onClick={() => setOpen(e)}
+      onClick={() => show(e)}
       sx={{ cursor: "pointer", ...(e.iso2 === HOME ? { bgcolor: "rgba(57,135,229,0.12)" } : {}) }}
     >
       <TableCell sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{ranked.gdp.get(e.iso2) ?? "–"}</TableCell>
@@ -153,6 +158,11 @@ export default function WorldEconomies() {
           <Typography variant="body2" sx={{ fontWeight: e.iso2 === HOME ? 700 : 500 }}>
             {nameOf(e)}
           </Typography>
+          {e.conflict && (
+            <Tooltip title={e.conflict === "war" ? t("econ.conflict.war") : t("econ.conflict.minor")}>
+              <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, bgcolor: e.conflict === "war" ? "#b91c1c" : "#ef4444", boxShadow: "0 0 0 2px rgba(239,68,68,0.25)" }} />
+            </Tooltip>
+          )}
         </Box>
       </TableCell>
       <TableCell align="right" sx={{ minWidth: 150 }}>
@@ -181,6 +191,9 @@ export default function WorldEconomies() {
       </TableCell>
       <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
         <Pct v={e.yoyQ} />
+      </TableCell>
+      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums", color: "text.secondary" }}>
+        {e.milPct !== null ? `${e.milPct.toLocaleString(locale, { maximumFractionDigits: 1 })} %` : "–"}
       </TableCell>
       <TableCell sx={{ color: "text.secondary", fontSize: 12 }}>{e.quarter ? `${e.quarter.replace("-", " ")}${e.quarterSource ? ` · ${e.quarterSource}` : ""}` : ""}</TableCell>
     </TableRow>
@@ -267,7 +280,7 @@ export default function WorldEconomies() {
         </Box>
 
         {data && view === "globe" ? (
-          <WorldGlobe items={data.items} onSelect={setOpen} />
+          <WorldGlobe items={data.items} onSelect={(e, tab) => show(e, tab)} />
         ) : !data ? (
           <Typography color="text.secondary">{t("common.loading")}</Typography>
         ) : (
@@ -283,6 +296,7 @@ export default function WorldEconomies() {
                     {head("growthYear", t("econ.growthYear"), "right", t("econ.growthYearTip"))}
                     {head("qoq", t("econ.qoq"), "right", t("econ.qoqTip"))}
                     {head("yoyQ", t("econ.yoyQ"), "right", t("econ.yoyQTip"))}
+                    {head("milPct", t("econ.milPct"), "right", t("econ.milPctTip"))}
                     <TableCell>{t("econ.quarter")}</TableCell>
                   </TableRow>
                 </TableHead>
@@ -291,7 +305,7 @@ export default function WorldEconomies() {
                   {homeHidden && (
                     <>
                       <TableRow>
-                        <TableCell colSpan={8} sx={{ py: 0.25, textAlign: "center", color: "text.disabled" }}>
+                        <TableCell colSpan={9} sx={{ py: 0.25, textAlign: "center", color: "text.disabled" }}>
                           ⋯
                         </TableCell>
                       </TableRow>
@@ -314,7 +328,18 @@ export default function WorldEconomies() {
           </>
         )}
       </CardContent>
-      {open && <CountryDialog economy={open} name={nameOf(open)} ranks={{ gdp: ranked.gdp.get(open.iso2), pc: ranked.pc.get(open.iso2) }} onClose={() => setOpen(null)} />}
+      {open && (
+        <CountryDialog
+          key={open.iso2}
+          economy={open}
+          name={nameOf(open)}
+          ranks={{ gdp: ranked.gdp.get(open.iso2), pc: ranked.pc.get(open.iso2) }}
+          items={data?.items ?? []}
+          onOpen={(e) => show(e, "defense")}
+          initialTab={openTab}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </Card>
   );
 }
