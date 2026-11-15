@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       maxYear: CONFLICT_MAX_YEAR,
       conflicts: conflicts.slice(0, 40).map(({ byYear: _byYear, ...c }) => c),
       conflictCount: conflicts.length,
-      relations: relationsOf(iso2, all),
+      relations: relationsOf(iso2, all.length > 100 ? all : []),
       memberships: membershipsOf(iso2),
       equipment: await equipmentOf(iso2),
       sources: { conflicts: CONFLICT_SOURCE, equipment: EQUIP_SOURCE },

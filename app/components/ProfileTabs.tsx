@@ -30,14 +30,37 @@ export function Grid({ children, cols = 4 }: { children: ReactNode; cols?: numbe
 }
 
 /** Vrstice z oznako in vrednostjo (dejstva iz infoboxa Wikipedije). */
+// Pogoste oznake iz angleškega infoboxa (ključ = oznaka brez letnice v oklepaju).
+const LABEL_KEYS: Record<string, string> = {
+  government: "government", president: "president", "prime minister": "pm", chancellor: "chancellor", "vice president": "vp", "deputy prime minister": "dpm",
+  monarch: "monarch", king: "king", queen: "queen", emir: "emir", "supreme leader": "supremeLeader", "general secretary": "genSec", premier: "premier",
+  legislature: "legislature", "upper house": "upperHouse", "lower house": "lowerHouse", "official languages": "officialLanguages", "official language": "officialLanguages",
+  "recognised regional languages": "regionalLanguages", "recognized regional languages": "regionalLanguages", "national language": "nationalLanguage", "national languages": "nationalLanguage",
+  "ethnic groups": "ethnic", religion: "religion", demonyms: "demonym", demonym: "demonym", gini: "gini", hdi: "hdi", "internet tld": "tld", "calling code": "calling",
+  "driving side": "driving", "mains electricity": "mains", "time zone": "timezone", "summer (dst)": "dst", "date format": "dateFormat", currency: "currency",
+  "independence from yugoslavia": "independenceYu", "current constitution": "constitution", "speaker of the national assembly": "speakerNA",
+};
+function useLabel() {
+  const { tr } = useT();
+  return (label: string) => {
+    const m = label.match(/^(.*?)\s*(\((\d{4})\))?$/);
+    const base = (m?.[1] ?? label).trim().toLowerCase();
+    const key = LABEL_KEYS[base];
+    if (!key) return label;
+    const text = tr(`pm.f.${key}`);
+    return text.startsWith("pm.f.") ? label : `${text}${m?.[3] ? ` (${m[3]})` : ""}`;
+  };
+}
+
 export function FactList({ rows }: { rows: { label: string; value: string }[] }) {
+  const label = useLabel();
   if (!rows.length) return null;
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "200px 1fr" }, columnGap: 2, rowGap: 0.75 }}>
       {rows.map((r, i) => (
         <Box key={i} sx={{ display: "contents" }}>
           <Typography variant="body2" color="text.secondary">
-            {r.label}
+            {label(r.label)}
           </Typography>
           <Typography variant="body2" sx={{ whiteSpace: "pre-line", mb: { xs: 1, sm: 0 } }}>
             {r.value}

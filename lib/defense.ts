@@ -101,7 +101,9 @@ export function relationsOf(iso: string, allIso: string[]): Relation[] {
   for (const [x, y, why] of ADVERSARIES) if (x === iso || y === iso) get(x === iso ? y : x).hostile.push(why);
 
   const out: Relation[] = [];
-  for (const o of allIso) {
+  // Vse države, ki imajo kakršen koli razlog (seznam vseh držav ni potreben; allIso le omeji izbor, če je podan).
+  const candidates = allIso.length ? allIso.filter((o) => score.has(o)) : [...score.keys()];
+  for (const o of candidates) {
     const r = score.get(o);
     if (!r || o === iso) continue;
     // Spopad prevlada nad članstvom v istem bloku (npr. Armenija–Azerbajdžan sta oba v SND).

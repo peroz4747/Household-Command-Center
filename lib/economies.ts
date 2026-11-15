@@ -129,7 +129,11 @@ async function load(): Promise<EconomiesData> {
     wbBulk("MS.MIL.TOTL.P1").catch(empty),
     wbBulk("MS.MIL.MPRT.KD").catch(empty),
     wbBulk("MS.MIL.XPRT.KD").catch(empty),
-    oecdQuarterly().catch(() => new Map<string, Quarterly>()),
+    // OECD občasno zavrne zahtevo (omejitev števila poizvedb); trije poskusi z razmikom.
+    oecdQuarterly()
+      .catch(() => new Promise((r) => setTimeout(r, 5000)).then(oecdQuarterly))
+      .catch(() => new Promise((r) => setTimeout(r, 15000)).then(oecdQuarterly))
+      .catch(() => new Map<string, Quarterly>()),
     eurostatQuarterly().catch(() => new Map<string, Quarterly>()),
   ]);
   const items: Economy[] = [];

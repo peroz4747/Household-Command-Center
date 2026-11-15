@@ -207,6 +207,7 @@ function clean(html: string, keepLines = false): string {
       .replace(/<[^>]+>/g, ""),
   )
     .replace(/&#x[0-9a-f]+;/gi, "")
+    .replace(/[\u00a0\u202f\u2009]/g, " ") // nedeljivi presledki (sicer oznake ne ustrezajo vzorcem)
     .replace(/\d+°\s*\d+′[\s\S]*$/m, "") // ostanek koordinat
     .replace(/\[\d+\]|\[[a-z]\]|\[note \d+\]|\[citation needed\]/g, "")
     .replace(/[ \t]+/g, " ");
