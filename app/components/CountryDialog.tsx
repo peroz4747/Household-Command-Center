@@ -12,7 +12,8 @@ import WifiIcon from "@mui/icons-material/Wifi";
 import TrainIcon from "@mui/icons-material/Train";
 import TerrainIcon from "@mui/icons-material/Terrain";
 import ScheduleIcon from "@mui/icons-material/Schedule";
-import { EconomyExtras, InformationTab, InfrastructureTab, PhysicalTab, PoliticsTab, SocietyTab, TimeTab } from "./ProfileTabs";
+import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
+import { EconomyExtras, HistoryTab, InformationTab, InfrastructureTab, PhysicalTab, PoliticsTab, SocietyTab, TimeTab } from "./ProfileTabs";
 import type { CountryProfile } from "../../lib/countryProfile";
 import { useI18n } from "../i18n";
 import type { CountryDetail, Economy } from "../../lib/economies";
@@ -104,7 +105,7 @@ function CountryInfoSection({ iso2 }: { iso2: string }) {
 
 // Zavihki po okviru PMESII-PT (NATO): politika, vojska, gospodarstvo, družba, informacije,
 // infrastruktura, fizično okolje, čas.
-export type TabId = "politics" | "military" | "economy" | "society" | "information" | "infrastructure" | "physical" | "time";
+export type TabId = "politics" | "military" | "economy" | "society" | "information" | "infrastructure" | "physical" | "time" | "history";
 const TABS: { id: TabId; letter: string; Icon: typeof TrendingUpIcon }[] = [
   { id: "politics", letter: "P", Icon: AccountBalanceIcon },
   { id: "military", letter: "M", Icon: ShieldIcon },
@@ -114,6 +115,7 @@ const TABS: { id: TabId; letter: string; Icon: typeof TrendingUpIcon }[] = [
   { id: "infrastructure", letter: "I", Icon: TrainIcon },
   { id: "physical", letter: "PT", Icon: TerrainIcon },
   { id: "time", letter: "T", Icon: ScheduleIcon },
+  { id: "history", letter: "", Icon: HistoryEduIcon },
 ];
 
 export default function CountryDialog({
@@ -234,6 +236,8 @@ export default function CountryDialog({
           <PhysicalTab economy={economy} profile={profile} items={items} onOpen={openOther} />
         ) : tab === "time" ? (
           <TimeTab profile={profile} />
+        ) : tab === "history" ? (
+          <HistoryTab economy={economy} profile={profile} />
         ) : (
         <>
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" }, gap: 1.25 }}>

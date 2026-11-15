@@ -1020,6 +1020,22 @@ const sl = {
   "pm.f.independenceYu": "Neodvisnost od Jugoslavije",
   "pm.f.constitution": "Veljavna ustava",
   "pm.f.speakerNA": "Predsednik državnega zbora",
+  "pm.tab.history": "Zgodovina",
+  "pm.media.title": "Glavni mediji in njihove zadnje novice",
+  "pm.media.loading": "Nalagam medije in novice …",
+  "pm.media.none": "Za to državo ni podatkov o medijih.",
+  "pm.media.noStories": "Novic trenutno ni bilo mogoče naložiti.",
+  "pm.media.viaGoogle": "prek Google News",
+  "pm.media.min": "pred {n} min",
+  "pm.media.h": "pred {n} h",
+  "pm.media.note": "Mediji: Wikidata (časopisi, portali, tiskovne agencije, RTV), razvrščeni po številu člankov o mediju na Wikipedijah (približek pomembnosti). Novice: RSS medija, sicer Google News za njegovo domeno.",
+  "pm.media.noteSI": "Največji slovenski mediji po dosegu; novice iz njihovih virov RSS (osvežitev vsakih 30 minut).",
+  "pm.h.overview": "Pregled zgodovine",
+  "pm.h.keyEvents": "Ključni dogodki",
+  "pm.h.formation": "Nastanek današnje države",
+  "pm.h.wikidataEvents": "Pomembni dogodki (Wikidata)",
+  "pm.h.periods": "Zgodovinska obdobja",
+  "pm.h.none": "Zgodovine za to državo ni bilo mogoče naložiti.",
 } as const;
 
 export type MessageKey = keyof typeof sl;

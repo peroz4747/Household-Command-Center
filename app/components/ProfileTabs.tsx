@@ -337,6 +337,7 @@ export function InformationTab({ economy, profile }: { economy: Economy; profile
           </Box>
         )}
       </Box>
+      <MediaSection iso2={economy.iso2} />
       <WikiSection iso2={economy.iso2} domain="information" heading={tr("pm.i.wiki")} />
       <Typography variant="caption" color="text.secondary">
         {tr("pm.i.note")}
@@ -554,6 +555,221 @@ export function TimeTab({ profile }: { profile: CountryProfile | null }) {
         </Box>
       )}
       {timeFacts.length > 1 && <FactList rows={timeFacts.map((x) => ({ label: x.label, value: x.value }))} />}
+    </Box>
+  );
+}
+
+/* ---------------- Mediji (zavihek Informacije) ---------------- */
+
+type Outlet = { name: string; site: string | null; kind: string; feedSource: "wikidata" | "site" | "google" | null; stories: { title: string; link: string; date: string | null }[] };
+
+function useFetch<T>(url: string): T | null | undefined {
+  const [state, setState] = useState<{ url: string; data: T | null } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => alive && setState({ url, data: d }))
+      .catch(() => alive && setState({ url, data: null }));
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  return state?.url === url ? state.data : undefined;
+}
+
+export function MediaSection({ iso2 }: { iso2: string }) {
+  const { tr, locale, lang } = useT();
+  const data = useFetch<{ outlets: Outlet[] }>(`/api/profile/media?iso2=${iso2}&lang=${lang}`);
+  const [now] = useState(() => Date.now());
+  const ago = (d: string | null) => {
+    if (!d) return "";
+    const min = Math.round((now - Date.parse(d)) / 60_000);
+    return min < 60 ? tr("pm.media.min", { n: Math.max(1, min) }) : min < 48 * 60 ? tr("pm.media.h", { n: Math.round(min / 60) }) : new Date(d).toLocaleDateString(locale, { day: "numeric", month: "numeric" });
+  };
+  return (
+    <Box>
+      <Heading>{tr("pm.media.title")}</Heading>
+      {data === undefined ? (
+        <Typography variant="body2" color="text.secondary">
+          {tr("pm.media.loading")}
+        </Typography>
+      ) : !data?.outlets.length ? (
+        <Typography variant="body2" color="text.secondary">
+          {tr("pm.media.none")}
+        </Typography>
+      ) : (
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 1.5 }}>
+          {data.outlets.map((o, i) => (
+            <Box key={o.name} sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(148,163,184,0.06)" }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.75 }}>
+                <Box sx={{ width: 22, height: 22, borderRadius: "50%", bgcolor: "rgba(57,135,229,0.2)", color: "#93c5fd", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{i + 1}</Box>
+                {o.site && (
+                  <Box component="img" src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(o.site).hostname)}&sz=32`} alt="" loading="lazy" sx={{ width: 16, height: 16, borderRadius: "3px" }} />
+                )}
+                <Typography variant="body2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }} noWrap>
+                  {o.site ? (
+                    <Box component="a" href={o.site} target="_blank" rel="noreferrer" sx={{ color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>
+                      {o.name}
+                    </Box>
+                  ) : (
+                    o.name
+                  )}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 160 }}>
+                  {o.kind}
+                </Typography>
+              </Box>
+              {o.stories.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  {tr("pm.media.noStories")}
+                </Typography>
+              ) : (
+                <Box component="ol" sx={{ m: 0, pl: 2.5, display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  {o.stories.map((s) => (
+                    <Box component="li" key={s.link} sx={{ fontSize: 13, lineHeight: 1.4 }}>
+                      <Box component="a" href={s.link} target="_blank" rel="noreferrer" sx={{ color: "text.primary", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}>
+                        {s.title}
+                      </Box>
+                      {s.date && (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
+                          {ago(s.date)}
+                        </Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+              {o.feedSource === "google" && (
+                <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.5 }}>
+                  {tr("pm.media.viaGoogle")}
+                </Typography>
+              )}
+            </Box>
+          ))}
+        </Box>
+      )}
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+        {tr(iso2 === "SI" ? "pm.media.noteSI" : "pm.media.note")}
+      </Typography>
+    </Box>
+  );
+}
+
+/* ---------------- Zgodovina ---------------- */
+
+type HistoryData = {
+  overview: InfoText | null;
+  periods: { title: string; text: string }[];
+  periodsSource: { lang: string; url: string; title: string } | null;
+  events: { date: string; label: string }[];
+};
+
+function Period({ title, text, index }: { title: string; text: string; index: number }) {
+  const { tr } = useT();
+  const [open, setOpen] = useState(index < 2);
+  const short = text.length > 420 && !open ? `${text.slice(0, text.lastIndexOf(" ", 420))} …` : text;
+  return (
+    <Box sx={{ position: "relative", pl: 3, pb: 2 }}>
+      <Box sx={{ position: "absolute", left: 6, top: 6, width: 10, height: 10, borderRadius: "50%", bgcolor: "#3987e5", boxShadow: "0 0 0 3px rgba(57,135,229,0.25)" }} />
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {title}
+      </Typography>
+      {short.split(/\n{2,}/).map((para, i) => (
+        <Typography key={i} variant="body2" color="text.secondary" sx={{ mt: 0.5, lineHeight: 1.6, whiteSpace: "pre-line" }}>
+          {para}
+        </Typography>
+      ))}
+      {text.length > 420 && (
+        <Box component="button" onClick={() => setOpen(!open)} sx={{ mt: 0.5, p: 0, border: 0, background: "none", color: "#60a5fa", cursor: "pointer", fontSize: 13 }}>
+          {open ? tr("econ.info.less") : tr("econ.info.more")}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+export function HistoryTab({ economy, profile }: { economy: Economy; profile: CountryProfile | null }) {
+  const { tr, locale, lang } = useT();
+  const data = useFetch<HistoryData>(`/api/profile/history?iso2=${economy.iso2}&lang=${lang}`);
+  // Nastanek države iz infoboxa (npr. ustanovitev, neodvisnost, ustava) + pomembni dogodki iz Wikidata.
+  const formation = (profile?.facts ?? []).filter((f) => /establishment|formation|independence|history|unification/i.test(f.section));
+  const fmt = (d: string) => {
+    const m = d.match(/^(-?\d{1,4})-(\d{2})-(\d{2})/);
+    if (!m) return d;
+    return m[2] === "01" && m[3] === "01" ? m[1] : new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  };
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {data === undefined && (
+        <Typography variant="body2" color="text.secondary">
+          {tr("common.loading")}
+        </Typography>
+      )}
+      {data?.overview && <InfoBlock heading={tr("pm.h.overview")} info={data.overview} />}
+      {(formation.length > 0 || (data?.events.length ?? 0) > 0) && (
+        <Box>
+          <Heading>{tr("pm.h.keyEvents")}</Heading>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
+            {formation.length > 0 && (
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  {tr("pm.h.formation")}
+                </Typography>
+                {formation.map((f, i) => (
+                  <Box key={i} sx={{ display: "flex", gap: 1.5, py: 0.5, borderLeft: "2px solid rgba(57,135,229,0.4)", pl: 1.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130, fontVariantNumeric: "tabular-nums" }}>
+                      {f.value.split("\n")[0]}
+                    </Typography>
+                    <Typography variant="body2">{f.label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+            {data && data.events.length > 0 && (
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  {tr("pm.h.wikidataEvents")}
+                </Typography>
+                {data.events.map((e, i) => (
+                  <Box key={i} sx={{ display: "flex", gap: 1.5, py: 0.5, borderLeft: "2px solid rgba(167,139,250,0.5)", pl: 1.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130, fontVariantNumeric: "tabular-nums" }}>
+                      {fmt(e.date)}
+                    </Typography>
+                    <Typography variant="body2">{e.label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </Box>
+      )}
+      {data && data.periods.length > 0 && (
+        <Box>
+          <Heading>
+            {tr("pm.h.periods")}
+            {data.periodsSource && data.periodsSource.lang !== lang ? ` · ${tr("econ.info.otherLang", { lang: data.periodsSource.lang.toUpperCase() })}` : ""}
+          </Heading>
+          <Box sx={{ position: "relative", "&::before": { content: '""', position: "absolute", left: 10, top: 8, bottom: 8, width: 2, bgcolor: "rgba(57,135,229,0.25)" } }}>
+            {data.periods.map((p, i) => (
+              <Period key={p.title} title={p.title} text={p.text} index={i} />
+            ))}
+          </Box>
+          {data.periodsSource && (
+            <Box component="a" href={data.periodsSource.url} target="_blank" rel="noreferrer" sx={{ fontSize: 13, color: "#60a5fa" }}>
+              {tr("econ.info.source", { title: data.periodsSource.title })} ↗
+            </Box>
+          )}
+        </Box>
+      )}
+      {data && !data.overview && !data.periods.length && (
+        <Typography variant="body2" color="text.secondary">
+          {tr("pm.h.none")}
+        </Typography>
+      )}
+      <Typography variant="caption" color="text.secondary">
+        {tr("econ.info.license")}
+      </Typography>
     </Box>
   );
 }

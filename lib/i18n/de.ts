@@ -1020,6 +1020,22 @@ const de: Record<MessageKey, string> = {
   "pm.f.independenceYu": "Unabhängigkeit von Jugoslawien",
   "pm.f.constitution": "Geltende Verfassung",
   "pm.f.speakerNA": "Parlamentspräsident",
+  "pm.tab.history": "Geschichte",
+  "pm.media.title": "Wichtigste Medien und ihre neuesten Meldungen",
+  "pm.media.loading": "Lade Medien und Meldungen …",
+  "pm.media.none": "Keine Mediendaten für dieses Land.",
+  "pm.media.noStories": "Meldungen konnten nicht geladen werden.",
+  "pm.media.viaGoogle": "über Google News",
+  "pm.media.min": "vor {n} Min.",
+  "pm.media.h": "vor {n} Std.",
+  "pm.media.note": "Medien: Wikidata (Zeitungen, Portale, Agenturen, Sender), nach Anzahl der Wikipedia-Artikel sortiert (Näherung für Bedeutung). Meldungen: RSS des Mediums, sonst Google News.",
+  "pm.media.noteSI": "Größte slowenische Medien nach Reichweite; Meldungen aus ihren RSS-Feeds (alle 30 Minuten).",
+  "pm.h.overview": "Geschichtlicher Überblick",
+  "pm.h.keyEvents": "Schlüsselereignisse",
+  "pm.h.formation": "Entstehung des heutigen Staates",
+  "pm.h.wikidataEvents": "Wichtige Ereignisse (Wikidata)",
+  "pm.h.periods": "Geschichtliche Epochen",
+  "pm.h.none": "Geschichte konnte nicht geladen werden.",
 };
 
 export default de;

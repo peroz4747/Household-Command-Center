@@ -1020,6 +1020,22 @@ const en: Record<MessageKey, string> = {
   "pm.f.independenceYu": "Independence from Yugoslavia",
   "pm.f.constitution": "Current constitution",
   "pm.f.speakerNA": "Speaker of the National Assembly",
+  "pm.tab.history": "History",
+  "pm.media.title": "Main media and their latest stories",
+  "pm.media.loading": "Loading media and stories …",
+  "pm.media.none": "No media data for this country.",
+  "pm.media.noStories": "Stories could not be loaded right now.",
+  "pm.media.viaGoogle": "via Google News",
+  "pm.media.min": "{n} min ago",
+  "pm.media.h": "{n} h ago",
+  "pm.media.note": "Media: Wikidata (newspapers, news sites, agencies, broadcasters), ranked by number of Wikipedia articles about them (a proxy for prominence). Stories: the outlet's RSS, otherwise Google News for its domain.",
+  "pm.media.noteSI": "Largest Slovenian media by reach; stories from their RSS feeds (refreshed every 30 minutes).",
+  "pm.h.overview": "Historical overview",
+  "pm.h.keyEvents": "Key events",
+  "pm.h.formation": "Formation of the present state",
+  "pm.h.wikidataEvents": "Significant events (Wikidata)",
+  "pm.h.periods": "Historical periods",
+  "pm.h.none": "History could not be loaded for this country.",
 };
 
 export default en;
