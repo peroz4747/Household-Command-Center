@@ -136,7 +136,7 @@ function LevelLine({ points, format }: { points: { label: string; value: number 
         ))}
         {points.map((p, i) =>
           i % every === 0 || i === points.length - 1 ? (
-            <text key={p.label} x={x(i)} y={H - 6} textAnchor="middle" fontSize={10} fill={TEXT}>
+            <text key={p.label} x={x(i)} y={H - 6} textAnchor={i === points.length - 1 ? "end" : i === 0 ? "start" : "middle"} fontSize={10} fill={TEXT}>
               {p.label}
             </text>
           ) : null,
