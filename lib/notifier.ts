@@ -68,7 +68,7 @@ function hotSteps(critical: boolean, top: string, disk = false): string {
 }
 const DISK_HOT: Record<string, number> = { hdd: 55, ssd: 70, nvme: 75 };
 const FULL_PCT = 90;
-const MORNING_HOUR = 7;
+const MORNING_HOUR = 6;
 const sl = translator("sl");
 
 const TICK_MS = 5 * 60_000;
