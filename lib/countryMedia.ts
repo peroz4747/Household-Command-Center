@@ -95,16 +95,15 @@ async function topOutlets(iso2: string): Promise<Omit<Outlet, "stories">[]> {
       seen.add(name);
       list.push({ name: String(b.mLabel.value), site, kind: String(b.typeLabel?.value ?? ""), feed: b.feed?.value ?? null, feedSource: b.feed ? "wikidata" : null });
     }
-    // Za prvih nekaj brez vira poiščemo RSS; medije brez novic preskočimo.
-    const out: Omit<Outlet, "stories">[] = [];
-    for (const o of list) {
-      if (out.length >= TOP) break;
-      if (!o.feed && o.site) {
+    // RSS za prvih nekaj medijev iščemo vzporedno (zaporedno je prvo odprtje trajalo 20 s in več).
+    const out = list.slice(0, TOP);
+    await Promise.all(
+      out.map(async (o) => {
+        if (o.feed || !o.site) return;
         const feed = await discoverFeed(o.site).catch(() => null);
         if (feed) Object.assign(o, { feed, feedSource: "site" });
-      }
-      out.push(o);
-    }
+      }),
+    );
     list = out;
   }
   listCache.set(iso2, { at: Date.now(), list });
