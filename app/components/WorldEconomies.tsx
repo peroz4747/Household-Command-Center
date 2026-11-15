@@ -125,7 +125,17 @@ export default function WorldEconomies() {
             <TextField
               {...params}
               placeholder={t("econ.search")}
-              slotProps={{ input: { ...params.InputProps, startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+              slotProps={{
+                ...params.slotProps,
+                input: {
+                  ...params.slotProps.input,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
             />
           )}
         />
