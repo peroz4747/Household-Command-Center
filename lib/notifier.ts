@@ -7,7 +7,8 @@ import { CAR_MANUAL } from "./carManual";
 import { calendarId, getGoogleCalendar } from "./googleCalendar";
 import { getCar, refreshCar } from "./car";
 import { getPcStatus } from "./pcControl";
-import { getServerDetails } from "./server";
+import { getServerDetails, type TempSensor } from "./server";
+import { pveGet } from "./proxmox";
 import { getStatus as getTvStatus } from "./tv";
 import { getWarnings, type WeatherWarning } from "./warnings";
 import { getFuel } from "./fuel";
@@ -26,9 +27,44 @@ type State = {
   running?: string[]; // gostje in Docker kontejnerji, ki so ob zadnjem preverjanju tekli
   stoppedAlerted?: string[]; // ustavljeni, o katerih smo že poslali obvestilo
   poolsAlerted?: string[];
+  hotAlerted?: string[]; // senzorji, o katerih pregrevanju smo poslali obvestilo
 };
 
-const CPU_HOT = 85; // °C
+// Meje pregrevanja po vrsti senzorja (°C); za neznane senzorje meja gonilnika - 5 °C ali 80 °C.
+const SENSOR_HOT: Record<string, number> = { coretemp: 85, k10temp: 85, zenpower: 85, acpitz: 80, pch: 85, nvme: 75, drivetemp: 55, amdgpu: 90 };
+const sensorLimit = (s: TempSensor) => SENSOR_HOT[s.chip.replace(/_.*$/, "")] ?? (s.max ? s.max - 5 : 80);
+// Kritično: blizu meje, pri kateri se strojna oprema sama izklopi.
+const sensorCritical = (s: TempSensor) => (s.crit ? s.crit - 5 : sensorLimit(s) + 10);
+const SENSOR_NAME: Record<string, string> = { coretemp: "Procesor", k10temp: "Procesor", acpitz: "Matična plošča (ACPI)", nvme: "NVMe disk", drivetemp: "Disk", pch: "Čipovje" };
+const PVE_URL = "https://192.168.1.10:8006/";
+const HOT_ACTIONS: NtfyAction[] = [
+  { action: "view", label: "Dashboard", url: DASHBOARD_URL },
+  { action: "view", label: "Proxmox", url: PVE_URL },
+];
+
+/** Najbolj obremenjeni gostje (za navodila v obvestilu o pregrevanju). */
+async function topGuests(): Promise<string> {
+  const list = await pveGet<{ type: string; vmid: number; name?: string; status: string; cpu?: number; maxcpu?: number }[]>("/cluster/resources?type=vm").catch(() => []);
+  return list
+    .filter((g) => g.status === "running" && (g.cpu ?? 0) > 0.05)
+    .sort((a, b) => (b.cpu ?? 0) * (b.maxcpu ?? 1) - (a.cpu ?? 0) * (a.maxcpu ?? 1))
+    .slice(0, 3)
+    .map((g) => `${g.type === "lxc" ? "CT" : "VM"} ${g.vmid} ${g.name ?? ""} ${Math.round((g.cpu ?? 0) * 100)} %`)
+    .join(", ");
+}
+
+function hotSteps(critical: boolean, top: string, disk = false): string {
+  const steps = [
+    `1. Prek Tailscala odpri dashboard (gumb spodaj) → stanje strežnika: preveri obremenitev in temperature.`,
+    top ? `2. Najbolj obremenjeni: ${top}. V Proxmoxu (gumb spodaj) izberi gosta → Shutdown, če ga ne rabiš.` : `2. V Proxmoxu (gumb spodaj) ustavi kontejnerje ali VM-je, ki jih ta čas ne rabiš.`,
+    disk ? `3. Če gre za USB disk ZFS bazena: dashboard → ZFS bazen tank → Varno izklopi, nato ga lahko ugasneš.` : `3. Počakaj 10–15 min in preveri, ali temperatura pada (dobil boš obvestilo, ko bo spet normalna).`,
+    critical
+      ? `4. NUJNO: če ne pada, dashboard → Napajanje strežnika → Ugasni. Pozor: ugasne se tudi Tailscale in DNS, prižgeš ga lahko le doma ali z urnikom.`
+      : `4. Če se segreva naprej (dobil boš nujno obvestilo), strežnik ugasni: dashboard → Napajanje strežnika → Ugasni.`,
+    `Doma: preveri ventilatorje, prah in zračenje okoli strežnika.`,
+  ];
+  return steps.join("\n");
+}
 const DISK_HOT: Record<string, number> = { hdd: 55, ssd: 70, nvme: 75 };
 const FULL_PCT = 90;
 const MORNING_HOUR = 7;
@@ -39,7 +75,9 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const DASHBOARD_URL = "https://dashboard.home/";
 
-export async function sendNotification(title: string, message: string, priority = 3, click = DASHBOARD_URL): Promise<boolean> {
+type NtfyAction = { action: "view"; label: string; url: string; clear?: boolean };
+
+export async function sendNotification(title: string, message: string, priority = 3, click = DASHBOARD_URL, actions?: NtfyAction[]): Promise<boolean> {
   const topic = process.env.NTFY_TOPIC;
   if (!topic) return false;
   const res = await fetch(process.env.NTFY_URL ?? "https://ntfy.sh/", {
@@ -47,7 +85,7 @@ export async function sendNotification(title: string, message: string, priority 
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),
-    body: JSON.stringify({ topic, title, message, priority, click }),
+    body: JSON.stringify({ topic, title, message, priority, click, ...(actions?.length ? { actions } : {}) }),
   }).catch(() => null);
   return Boolean(res?.ok);
 }
@@ -79,9 +117,9 @@ async function tick(): Promise<void> {
   const state: State = raw && !Array.isArray(raw) ? raw : {};
   const sent = state.sent ?? {};
   const now = Date.now();
-  const once = async (key: string, ttl: number, title: string, message: string, priority = 3) => {
+  const once = async (key: string, ttl: number, title: string, message: string, priority = 3, actions?: NtfyAction[]) => {
     if (sent[key] && now - sent[key] < ttl) return;
-    if (await sendNotification(title, message, priority)) sent[key] = now;
+    if (await sendNotification(title, message, priority, DASHBOARD_URL, actions)) sent[key] = now;
   };
   const section = async (fn: () => Promise<void>) => fn().catch(() => {});
   const clock = localClock(new Date(now));
@@ -98,17 +136,52 @@ async function tick(): Promise<void> {
       }
     }
     state.poolsAlerted = [...badPools];
+    const hot = new Set(state.hotAlerted ?? []);
     for (const disk of details.disks) {
       if (disk.health && !["PASSED", "OK", "UNKNOWN"].includes(disk.health.toUpperCase())) {
         await once(`disk:${disk.device}:${disk.health}`, DAY, "Težava z diskom", `${disk.model} (${disk.device}): ${disk.health}.`, 5);
       }
       const limit = DISK_HOT[disk.type] ?? DISK_HOT.ssd;
+      const diskKey = `disk:${disk.device}`;
       if (disk.temp !== undefined && disk.temp >= limit) {
-        await once(`disktemp:${disk.device}`, 6 * HOUR, "Disk se pregreva", `${disk.model} (${disk.device}) ima ${disk.temp} °C (meja ${limit} °C).`, 4);
+        const critical = disk.temp >= limit + 8;
+        await once(
+          `disktemp:${disk.device}:${critical ? "crit" : "hot"}`,
+          critical ? HOUR : 6 * HOUR,
+          critical ? "NUJNO: disk se močno pregreva" : "Disk se pregreva",
+          `${disk.model} (${disk.device}) ima ${disk.temp} °C (meja ${limit} °C).\n\nKaj narediti na daljavo:\n${hotSteps(critical, await topGuests(), true)}`,
+          critical ? 5 : 4,
+          HOT_ACTIONS,
+        );
+        hot.add(diskKey);
+      } else if (disk.temp !== undefined && disk.temp < limit - 3 && hot.delete(diskKey)) {
+        await sendNotification("Temperatura diska je spet normalna", `${disk.model} (${disk.device}): ${disk.temp} °C.`);
       }
     }
-    const cpuMax = details.cpuTemps?.length ? Math.max(...details.cpuTemps.map((t) => t.temp)) : null;
-    if (cpuMax !== null && cpuMax >= CPU_HOT) await once("cputemp", 3 * HOUR, "Strežnik se pregreva", `Procesor ima ${cpuMax.toFixed(0)} °C (meja ${CPU_HOT} °C).`, 4);
+    // Vsi senzorji hosta; po čipu obvestimo o najbolj vročem (npr. ne 6× za vsako jedro posebej).
+    const sensors: TempSensor[] = details.sensors ?? (details.cpuTemps ?? []).map((t) => ({ chip: "coretemp", label: t.label, temp: t.temp, max: null, crit: null }));
+    const chips = new Map<string, TempSensor>();
+    for (const x of sensors) if (!chips.has(x.chip) || x.temp - sensorLimit(x) > chips.get(x.chip)!.temp - sensorLimit(chips.get(x.chip)!)) chips.set(x.chip, x);
+    for (const [chip, x] of chips) {
+      const key = `sensor:${chip}`;
+      const limit = sensorLimit(x);
+      if (x.temp >= limit) {
+        const critical = x.temp >= sensorCritical(x);
+        const name = `${SENSOR_NAME[chip.replace(/_.*$/, "")] ?? chip} (${x.label})`;
+        await once(
+          `${key}:${critical ? "crit" : "hot"}`,
+          critical ? HOUR : 3 * HOUR,
+          critical ? "NUJNO: strežnik se močno pregreva" : "Strežnik se pregreva",
+          `${name}: ${x.temp.toFixed(0)} °C (meja ${limit.toFixed(0)} °C${x.crit ? `, izklop pri ${x.crit.toFixed(0)} °C` : ""}).\nObremenitev CPU: ${details.cpu.percent.toFixed(0)} %.\n\nKaj narediti na daljavo:\n${hotSteps(critical, await topGuests())}`,
+          critical ? 5 : 4,
+          HOT_ACTIONS,
+        );
+        hot.add(key);
+      } else if (x.temp < limit - 5 && hot.delete(key)) {
+        await sendNotification("Temperatura strežnika je spet normalna", `${SENSOR_NAME[chip] ?? chip}: ${x.temp.toFixed(0)} °C.`);
+      }
+    }
+    state.hotAlerted = [...hot];
     for (const s of [...details.storages, ...details.pools]) {
       if (s.percent >= FULL_PCT) {
         const step = Math.floor(s.percent / 5) * 5; // novo obvestilo pri vsakih dodatnih 5 %

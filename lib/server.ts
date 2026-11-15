@@ -15,6 +15,7 @@ export type DiskInfo = {
   temp?: number;
 };
 export type CpuTemp = { label: string; temp: number };
+export type TempSensor = { chip: string; label: string; temp: number; max: number | null; crit: number | null };
 export type TaskEntry = {
   upid: string;
   type: string;
@@ -38,6 +39,7 @@ export type ServerDetails = {
   pools: (StorageUsage & { health: string })[];
   disks: DiskInfo[];
   cpuTemps: CpuTemp[] | null; // null = podatki s hosta niso na voljo
+  sensors: TempSensor[] | null; // vsi temperaturni senzorji hosta (hwmon)
   tasks: TaskEntry[];
   errors: string[];
   generatedAt: string;
@@ -95,6 +97,7 @@ const HOST_STATUS_MAX_AGE_S = 180;
 type HostStatus = {
   generatedAt: number;
   cpuTemps: CpuTemp[];
+  sensors?: TempSensor[];
   failedUnits: string[];
   // Iz /var/lib/pve-manager/pkgupdates; null/undefined = ni na voljo (starejša host skripta).
   pkgUpdates?: string[] | null;
@@ -227,6 +230,7 @@ export async function getServerDetails(): Promise<ServerDetails> {
     })),
     disks: diskInfo.sort((a, b) => a.device.localeCompare(b.device)),
     cpuTemps: host?.cpuTemps ?? null,
+    sensors: host?.sensors ?? null,
     tasks: tasks.map(toTask),
     errors,
     generatedAt: new Date().toISOString(),
