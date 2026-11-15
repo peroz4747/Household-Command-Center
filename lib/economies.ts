@@ -16,7 +16,6 @@ export type Economy = {
   quarterSource: "OECD" | "Eurostat" | null;
 };
 export type EconomiesData = { items: Economy[]; worldGdpUsd: number | null; fetchedAt: string };
-const quarterHistory = new Map<string, { source: "OECD" | "Eurostat"; history: QuarterPoint[] }>();
 
 const WB = "https://api.worldbank.org/v2";
 const CACHE_MS = 12 * 3_600_000;
@@ -29,10 +28,19 @@ async function json(url: string, headers: Record<string, string> = {}): Promise<
   return res.json();
 }
 
-async function wbIndicator(code: string): Promise<Map<string, { value: number; date: string }>> {
-  const body = await json(`${WB}/country/all/indicator/${code}?format=json&mrnev=1&per_page=400`);
-  const out = new Map<string, { value: number; date: string }>();
-  for (const r of body?.[1] ?? []) if (r.value !== null && r.countryiso3code) out.set(r.countryiso3code, { value: Number(r.value), date: String(r.date) });
+/** Zgodovina kazalnika za vse države v eni poizvedbi (~1 s); poizvedbe po državah so pri Svetovni banki zelo počasne. */
+async function wbBulk(code: string): Promise<Map<string, YearPoint[]>> {
+  const to = new Date().getUTCFullYear() - 1;
+  const url = `${WB}/country/all/indicator/${code}?format=json&date=${to - 20}:${to}&per_page=20000`;
+  const body = await json(url).catch(() => new Promise((r) => setTimeout(r, 2000)).then(() => json(url)));
+  const out = new Map<string, YearPoint[]>();
+  for (const r of body?.[1] ?? []) {
+    if (r.value === null || !r.countryiso3code) continue;
+    const list = out.get(r.countryiso3code) ?? [];
+    list.push({ year: String(r.date), value: Number(r.value) });
+    out.set(r.countryiso3code, list);
+  }
+  for (const list of out.values()) list.sort((x, y) => x.year.localeCompare(y.year));
   return out;
 }
 
@@ -95,38 +103,58 @@ async function eurostatQuarterly(): Promise<Map<string, Quarterly>> {
 }
 
 async function load(): Promise<EconomiesData> {
-  const [meta, gdp, pc, growth, oecd, eurostat] = await Promise.all([
+  const [meta, gdp, pc, growth, pop, infl, unemp, exp, oecd, eurostat] = await Promise.all([
     json(`${WB}/country?format=json&per_page=400`),
-    wbIndicator("NY.GDP.MKTP.CD"),
-    wbIndicator("NY.GDP.PCAP.CD"),
-    wbIndicator("NY.GDP.MKTP.KD.ZG"),
+    wbBulk("NY.GDP.MKTP.CD"),
+    wbBulk("NY.GDP.PCAP.CD"),
+    wbBulk("NY.GDP.MKTP.KD.ZG"),
+    wbBulk("SP.POP.TOTL").catch(() => new Map<string, YearPoint[]>()),
+    wbBulk("FP.CPI.TOTL.ZG").catch(() => new Map<string, YearPoint[]>()),
+    wbBulk("SL.UEM.TOTL.ZS").catch(() => new Map<string, YearPoint[]>()),
+    wbBulk("NE.EXP.GNFS.ZS").catch(() => new Map<string, YearPoint[]>()),
     oecdQuarterly().catch(() => new Map<string, Quarterly>()),
     eurostatQuarterly().catch(() => new Map<string, Quarterly>()),
   ]);
   const items: Economy[] = [];
+  const nextDetails = new Map<string, CountryDetail>();
   for (const c of meta?.[1] ?? []) {
     if (c.region?.id === "NA" || !c.iso2Code || !/^[A-Z]{2}$/.test(c.iso2Code)) continue; // agregati (svet, regije ...)
     const iso3 = String(c.id);
     const q = oecd.get(iso3) ?? eurostat.get(iso3) ?? null;
-    if (q) quarterHistory.set(iso3, { source: q.source, history: q.history.slice(-12) });
+    const lastOf = (m: Map<string, YearPoint[]>) => m.get(iso3)?.at(-1) ?? null;
     items.push({
       iso2: c.iso2Code,
       iso3,
       name: String(c.name),
       region: String(c.region?.value ?? "").trim(),
-      gdpUsd: gdp.get(iso3)?.value ?? null,
-      gdpYear: gdp.get(iso3)?.date ?? null,
-      gdpPerCapitaUsd: pc.get(iso3)?.value ?? null,
-      growthYear: growth.get(iso3)?.value ?? null,
-      growthYearOf: growth.get(iso3)?.date ?? null,
+      gdpUsd: lastOf(gdp)?.value ?? null,
+      gdpYear: lastOf(gdp)?.year ?? null,
+      gdpPerCapitaUsd: lastOf(pc)?.value ?? null,
+      growthYear: lastOf(growth)?.value ?? null,
+      growthYearOf: lastOf(growth)?.year ?? null,
       qoq: q?.qoq ?? null,
       yoyQ: q?.yoy ?? null,
       quarter: q?.quarter ?? null,
       quarterSource: q?.source ?? null,
     });
+    nextDetails.set(iso3, {
+      iso3,
+      incomeLevel: c.incomeLevel?.value ? String(c.incomeLevel.value) : null,
+      capital: c.capitalCity ? String(c.capitalCity) : null,
+      gdp: gdp.get(iso3) ?? [],
+      gdpPerCapita: pc.get(iso3) ?? [],
+      growth: growth.get(iso3) ?? [],
+      quarters: q?.history.slice(-12) ?? [],
+      quarterSource: q?.source ?? null,
+      population: lastOf(pop),
+      inflation: lastOf(infl),
+      unemployment: lastOf(unemp),
+      exports: lastOf(exp),
+    });
   }
+  details = nextDetails;
   items.sort((a, b) => (b.gdpUsd ?? -1) - (a.gdpUsd ?? -1));
-  return { items, worldGdpUsd: gdp.get("WLD")?.value ?? null, fetchedAt: new Date().toISOString() };
+  return { items, worldGdpUsd: gdp.get("WLD")?.at(-1)?.value ?? null, fetchedAt: new Date().toISOString() };
 }
 
 export async function getEconomies(): Promise<EconomiesData> {
@@ -166,58 +194,9 @@ export type CountryDetail = {
   exports: YearPoint | null; // izvoz, % BDP
 };
 
-const detailCache = new Map<string, { at: number; data: CountryDetail }>();
-
-/** Svetovna banka občasno vrne napako ali prazen odgovor; en ponovni poskus. */
-const wbJson = (url: string) => json(url).catch(() => new Promise((r) => setTimeout(r, 1500)).then(() => json(url))).catch(() => null);
-
-async function wbHistory(iso3: string, code: string, n = 20): Promise<YearPoint[]> {
-  const body = await wbJson(`${WB}/country/${iso3}/indicator/${code}?format=json&mrv=${n}&per_page=100`);
-  return ((body?.[1] ?? []) as any[])
-    .filter((r) => r.value !== null)
-    .map((r) => ({ year: String(r.date), value: Number(r.value) }))
-    .sort((a, b) => a.year.localeCompare(b.year));
-}
-
-async function wbLatest(iso3: string, code: string): Promise<YearPoint | null> {
-  const body = await wbJson(`${WB}/country/${iso3}/indicator/${code}?format=json&mrnev=1`);
-  const r = body?.[1]?.[0];
-  return r && r.value !== null ? { year: String(r.date), value: Number(r.value) } : null;
-}
+let details = new Map<string, CountryDetail>(); // napolni load() iz skupnih prenosov
 
 export async function getCountryDetail(iso3: string): Promise<CountryDetail | null> {
-  const had = detailCache.get(iso3);
-  if (had && Date.now() - had.at < CACHE_MS) return had.data;
-  const meta = await wbJson(`${WB}/country/${iso3}?format=json`);
-  const c = meta?.[1]?.[0];
-  if (!c || c.region?.id === "NA") return null;
-  // Četrtletna zgodovina je iz skupnega prenosa (OECD dovoli le nekaj poizvedb na uro).
-  await getEconomies().catch(() => null);
-  const q = quarterHistory.get(iso3);
-  const [gdp, gdpPerCapita, growth, population, inflation, unemployment, exports] = await Promise.all([
-    wbHistory(iso3, "NY.GDP.MKTP.CD"),
-    wbHistory(iso3, "NY.GDP.PCAP.CD"),
-    wbHistory(iso3, "NY.GDP.MKTP.KD.ZG"),
-    wbLatest(iso3, "SP.POP.TOTL"),
-    wbLatest(iso3, "FP.CPI.TOTL.ZG"),
-    wbLatest(iso3, "SL.UEM.TOTL.ZS"),
-    wbLatest(iso3, "NE.EXP.GNFS.ZS"),
-  ]);
-  const data: CountryDetail = {
-    iso3,
-    incomeLevel: c.incomeLevel?.value ? String(c.incomeLevel.value) : null,
-    capital: c.capitalCity ? String(c.capitalCity) : null,
-    gdp,
-    gdpPerCapita,
-    growth,
-    quarters: q?.history ?? [],
-    quarterSource: q?.source ?? null,
-    population,
-    inflation,
-    unemployment,
-    exports,
-  };
-  if (detailCache.size > 100) detailCache.clear();
-  detailCache.set(iso3, { at: Date.now(), data });
-  return data;
+  await getEconomies();
+  return details.get(iso3) ?? null;
 }
