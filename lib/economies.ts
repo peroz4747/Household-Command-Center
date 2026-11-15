@@ -191,9 +191,9 @@ export async function getEconomies(): Promise<EconomiesData> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
   inFlight ??= load()
     .then((data) => {
-      // Če OECD ni odgovoril (ni četrtletnih podatkov), poskusimo znova čez 30 min, ne čez 12 h.
+      // Če OECD ni odgovoril (ni četrtletnih podatkov), poskusimo znova čez 5 min, ne čez 12 h.
       const partial = data.items.filter((e) => e.qoq !== null).length < 20;
-      cache = { at: partial ? Date.now() - CACHE_MS + 30 * 60_000 : Date.now(), data };
+      cache = { at: partial ? Date.now() - CACHE_MS + 5 * 60_000 : Date.now(), data };
       return data;
     })
     .finally(() => (inFlight = null));
