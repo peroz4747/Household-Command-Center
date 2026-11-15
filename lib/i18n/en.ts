@@ -1052,9 +1052,9 @@ const en: Record<MessageKey, string> = {
   "def.war.title": "Deployed forces, killed and wounded",
   "def.war.noSeparate": "The source lists no separate figures for {name}; below are totals for the side it supported.",
   "def.war.strength": "Deployed forces",
-  "def.war.strengthSide": "Side"s forces (total)",
+  "def.war.strengthSide": "Side’s forces (total)",
   "def.war.casualties": "Killed and wounded",
-  "def.war.casualtiesSide": "Side"s losses (total)",
+  "def.war.casualtiesSide": "Side’s losses (total)",
   "def.war.source": "Source: Wikipedia –",
 };
 
