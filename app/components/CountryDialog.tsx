@@ -1,18 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Button, Dialog, DialogContent, DialogTitle, IconButton, Tab, Tabs, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Dialog, DialogContent, DialogTitle, IconButton, Tab, Tabs, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery, useTheme } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import ShieldIcon from "@mui/icons-material/Shield";
 import DefensePanel from "./DefensePanel";
+import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
+import GroupsIcon from "@mui/icons-material/Groups";
+import WifiIcon from "@mui/icons-material/Wifi";
+import TrainIcon from "@mui/icons-material/Train";
+import TerrainIcon from "@mui/icons-material/Terrain";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import { EconomyExtras, InformationTab, InfrastructureTab, PhysicalTab, PoliticsTab, SocietyTab, TimeTab } from "./ProfileTabs";
+import type { CountryProfile } from "../../lib/countryProfile";
 import { useI18n } from "../i18n";
 import type { CountryDetail, Economy } from "../../lib/economies";
-import type { CountryInfo, InfoText } from "../../lib/countryInfo";
+import type { CountryInfo } from "../../lib/countryInfo";
 import type { MarketQuote, MarketRange } from "../../lib/markets";
 import { COUNTRY_MARKETS } from "../../lib/countryMarkets";
 import { SloveniaMarket, Tile } from "./MarketOverview";
-import { Figure, GrowthBars, LevelLine } from "./CountryCharts";
+import { Figure, GrowthBars, InfoBlock, LevelLine } from "./CountryCharts";
 
 
 function CountryMarket({ iso2 }: { iso2: string }) {
@@ -57,42 +65,6 @@ function CountryMarket({ iso2 }: { iso2: string }) {
   );
 }
 
-const PREVIEW = 600;
-
-function InfoBlock({ heading, info }: { heading: string; info: InfoText }) {
-  const { t, lang } = useI18n();
-  const [more, setMore] = useState(false);
-  const long = info.text.length > PREVIEW + 100;
-  const shown = !long || more ? info.text : `${info.text.slice(0, info.text.lastIndexOf(" ", PREVIEW))} …`;
-  return (
-    <Box>
-      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-        {heading}
-        {info.lang !== lang && (
-          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontWeight: 400 }}>
-            {t("econ.info.otherLang", { lang: info.lang.toUpperCase() })}
-          </Typography>
-        )}
-      </Typography>
-      {shown.split(/\n{2,}/).map((para, i) => (
-        <Typography key={i} variant="body2" sx={{ mb: 1, whiteSpace: "pre-line", lineHeight: 1.6, color: "text.secondary" }}>
-          {para}
-        </Typography>
-      ))}
-      <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-        {long && (
-          <Button size="small" onClick={() => setMore(!more)} sx={{ px: 0, minWidth: 0 }}>
-            {more ? t("econ.info.less") : t("econ.info.more")}
-          </Button>
-        )}
-        <Button size="small" href={info.url} target="_blank" rel="noreferrer" sx={{ textTransform: "none" }}>
-          {t("econ.info.source", { title: info.title })} ↗
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
 function CountryInfoSection({ iso2 }: { iso2: string }) {
   const { t, lang } = useI18n();
   const [info, setInfo] = useState<{ key: string; data: CountryInfo | null } | null>(null);
@@ -130,6 +102,20 @@ function CountryInfoSection({ iso2 }: { iso2: string }) {
   );
 }
 
+// Zavihki po okviru PMESII-PT (NATO): politika, vojska, gospodarstvo, družba, informacije,
+// infrastruktura, fizično okolje, čas.
+export type TabId = "politics" | "military" | "economy" | "society" | "information" | "infrastructure" | "physical" | "time";
+const TABS: { id: TabId; letter: string; Icon: typeof TrendingUpIcon }[] = [
+  { id: "politics", letter: "P", Icon: AccountBalanceIcon },
+  { id: "military", letter: "M", Icon: ShieldIcon },
+  { id: "economy", letter: "E", Icon: TrendingUpIcon },
+  { id: "society", letter: "S", Icon: GroupsIcon },
+  { id: "information", letter: "I", Icon: WifiIcon },
+  { id: "infrastructure", letter: "I", Icon: TrainIcon },
+  { id: "physical", letter: "PT", Icon: TerrainIcon },
+  { id: "time", letter: "T", Icon: ScheduleIcon },
+];
+
 export default function CountryDialog({
   economy,
   name,
@@ -137,17 +123,19 @@ export default function CountryDialog({
   items,
   onOpen,
   onClose,
-  initialTab = "economy",
+  initialTab = "politics",
 }: {
   economy: Economy;
   name: string;
   ranks: { gdp?: number; pc?: number };
   items: Economy[];
-  onOpen: (e: Economy) => void;
+  onOpen: (e: Economy, tab: TabId) => void;
   onClose: () => void;
-  initialTab?: "economy" | "defense";
+  initialTab?: TabId;
 }) {
-  const [tab, setTab] = useState<"economy" | "defense">(initialTab);
+  const [tab, setTab] = useState<TabId>(initialTab);
+  // Klik na drugo državo (sosede, diplomacija) jo odpre na istem zavihku.
+  const openOther = (e: Economy) => onOpen(e, tab);
   const { t, locale } = useI18n();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
@@ -161,6 +149,27 @@ export default function CountryDialog({
       .then(setDetail)
       .catch(() => setFailed(true));
   }, [economy.iso3]);
+
+  // Profil PMESII-PT; če se kazalniki na strežniku še nalagajo, ga čez 20 s zahtevamo znova.
+  const [profile, setProfile] = useState<CountryProfile | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const load = (attempt: number) =>
+      fetch(`/api/profile?iso2=${economy.iso2}&iso3=${economy.iso3}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p: CountryProfile | null) => {
+          if (!alive || !p) return;
+          setProfile(p);
+          if (p.indicatorsPending && attempt < 6) timer = setTimeout(() => void load(attempt + 1), 20_000);
+        })
+        .catch(() => {});
+    void load(0);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [economy.iso2, economy.iso3]);
 
   const money = (n: number | null | undefined, compact = true) =>
     n == null ? "–" : n.toLocaleString(locale, compact ? { notation: "compact", maximumFractionDigits: n >= 1e12 ? 2 : 1, style: "currency", currency: "USD" } : { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -185,23 +194,46 @@ export default function CountryDialog({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 3, borderBottom: "1px solid rgba(148,163,184,0.15)", minHeight: 40, "& .MuiTab-root": { minHeight: 40 } }}>
-        <Tab value="economy" icon={<TrendingUpIcon fontSize="small" />} iconPosition="start" label={t("econ.tab.economy")} />
-        <Tab
-          value="defense"
-          icon={<ShieldIcon fontSize="small" />}
-          iconPosition="start"
-          label={
-            <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              {t("econ.tab.defense")}
-              {economy.conflict && <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: economy.conflict === "war" ? "#b91c1c" : "#ef4444" }} />}
-            </Box>
-          }
-        />
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ px: 1, borderBottom: "1px solid rgba(148,163,184,0.15)", minHeight: 44, "& .MuiTab-root": { minHeight: 44, px: 1.5, textTransform: "none" } }}
+      >
+        {TABS.map(({ id, letter, Icon }) => (
+          <Tab
+            key={id}
+            value={id}
+            icon={<Icon fontSize="small" />}
+            iconPosition="start"
+            label={
+              <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                {tr(`pm.tab.${id}`)}
+                <Box component="span" sx={{ fontSize: 10, color: "text.disabled", fontWeight: 700 }}>
+                  {letter}
+                </Box>
+                {id === "military" && economy.conflict && <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: economy.conflict === "war" ? "#b91c1c" : "#ef4444" }} />}
+              </Box>
+            }
+          />
+        ))}
       </Tabs>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 3, pt: "20px !important" }}>
-        {tab === "defense" ? (
-          <DefensePanel economy={economy} detail={detail} items={items} onOpen={onOpen} />
+        {tab === "politics" ? (
+          <PoliticsTab economy={economy} profile={profile} diplomacy={<DefensePanel part="diplomacy" economy={economy} detail={detail} items={items} onOpen={openOther} />} />
+        ) : tab === "military" ? (
+          <DefensePanel economy={economy} detail={detail} items={items} onOpen={openOther} />
+        ) : tab === "society" ? (
+          <SocietyTab economy={economy} profile={profile} />
+        ) : tab === "information" ? (
+          <InformationTab economy={economy} profile={profile} />
+        ) : tab === "infrastructure" ? (
+          <InfrastructureTab economy={economy} profile={profile} />
+        ) : tab === "physical" ? (
+          <PhysicalTab economy={economy} profile={profile} items={items} onOpen={openOther} />
+        ) : tab === "time" ? (
+          <TimeTab profile={profile} />
         ) : (
         <>
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" }, gap: 1.25 }}>
@@ -263,6 +295,8 @@ export default function CountryDialog({
             </Box>
           </Box>
         )}
+
+        <EconomyExtras profile={profile} />
 
         <CountryInfoSection iso2={economy.iso2} />
 

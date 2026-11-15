@@ -12,6 +12,7 @@ import { useI18n } from "../i18n";
 import type { CountryDetail, Economy } from "../../lib/economies";
 import type { Conflict, Equipment, Relation, RelationLevel } from "../../lib/defense";
 import { Figure, LevelLine } from "./CountryCharts";
+import { WikiSection } from "./ProfileTabs";
 
 type DefenseData = {
   status: "war" | "conflict" | null;
@@ -110,7 +111,19 @@ function ConflictCard({ c, iso2, nameOf, maxYear }: { c: DefenseData["conflicts"
   );
 }
 
-export default function DefensePanel({ economy, detail, items, onOpen }: { economy: Economy; detail: CountryDetail | null; items: Economy[]; onOpen: (e: Economy) => void }) {
+export default function DefensePanel({
+  economy,
+  detail,
+  items,
+  onOpen,
+  part = "military",
+}: {
+  economy: Economy;
+  detail: CountryDetail | null;
+  items: Economy[];
+  onOpen: (e: Economy) => void;
+  part?: "military" | "diplomacy";
+}) {
   const { t, locale } = useI18n();
   const tr = t as unknown as (k: string, v?: Record<string, string | number>) => string;
   const [data, setData] = useState<{ iso: string; d: DefenseData | null } | null>(null);
@@ -156,6 +169,86 @@ export default function DefensePanel({ economy, detail, items, onOpen }: { econo
   const shownConflicts = allConflicts ? d.conflicts : d.conflicts.slice(0, Math.max(3, ongoing.length));
   const groups = ([-2, -1, 1, 2] as RelationLevel[]).map((level) => ({ level, list: d.relations.filter((r) => r.level === level) }));
   const neutralCount = items.length - 1 - d.relations.length;
+
+  const diplomacy = (
+    <>
+      <Box>
+        <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+          {t("def.diplomacy")}
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          {groups.map(({ level, list }) => {
+            const { color, Icon, key } = RELATION_STYLE[level];
+            return (
+              <Box key={level} sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
+                <Tooltip title={tr(`def.rel.${key}Tip`)}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150, color }}>
+                    <Icon />
+                    <Typography variant="body2" sx={{ fontWeight: 700, color }}>
+                      {tr(`def.rel.${key}`)} ({list.length})
+                    </Typography>
+                  </Box>
+                </Tooltip>
+                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", flex: 1 }}>
+                  {list.length === 0 && (
+                    <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
+                      –
+                    </Typography>
+                  )}
+                  {list.map((r) => {
+                    const target = byIso.get(r.iso2);
+                    return (
+                      <Tooltip key={r.iso2} title={r.reasons.join(" · ")}>
+                        <Chip
+                          size="small"
+                          avatar={flag(r.iso2, 18)}
+                          label={nameOf(r.iso2)}
+                          onClick={target ? () => onOpen(target) : undefined}
+                          sx={{ height: 24, border: `1px solid ${color}`, bgcolor: `${color}22`, "& .MuiChip-avatar": { width: 18, height: 13, ml: 0.75 } }}
+                        />
+                      </Tooltip>
+                    );
+                  })}
+                </Box>
+              </Box>
+            );
+          })}
+          <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150, color: RELATION_STYLE[0].color }}>
+              <SentimentNeutralIcon />
+              <Typography variant="body2" sx={{ fontWeight: 700, color: RELATION_STYLE[0].color }}>
+                {t("def.rel.neutral")} ({Math.max(0, neutralCount)})
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              {t("def.rel.neutralNote")}
+            </Typography>
+          </Box>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
+          {t("def.rel.method")}
+        </Typography>
+      </Box>
+
+    </>
+  );
+
+  if (part === "diplomacy")
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {d.memberships.length > 0 && (
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+            <Typography variant="caption" color="text.secondary">
+              {t("def.members")}
+            </Typography>
+            {d.memberships.map((m) => (
+              <Chip key={m.id} size="small" label={m.name} variant={m.kind === "military" ? "filled" : "outlined"} color={m.kind === "military" ? "success" : "default"} sx={{ height: 22 }} />
+            ))}
+          </Box>
+        )}
+        {diplomacy}
+      </Box>
+    );
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -251,64 +344,7 @@ export default function DefensePanel({ economy, detail, items, onOpen }: { econo
         )}
       </Box>
 
-      {/* Diplomacija */}
-      <Box>
-        <Typography variant="overline" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-          {t("def.diplomacy")}
-        </Typography>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          {groups.map(({ level, list }) => {
-            const { color, Icon, key } = RELATION_STYLE[level];
-            return (
-              <Box key={level} sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
-                <Tooltip title={tr(`def.rel.${key}Tip`)}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150, color }}>
-                    <Icon />
-                    <Typography variant="body2" sx={{ fontWeight: 700, color }}>
-                      {tr(`def.rel.${key}`)} ({list.length})
-                    </Typography>
-                  </Box>
-                </Tooltip>
-                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", flex: 1 }}>
-                  {list.length === 0 && (
-                    <Typography variant="caption" color="text.disabled" sx={{ mt: 0.5 }}>
-                      –
-                    </Typography>
-                  )}
-                  {list.map((r) => {
-                    const target = byIso.get(r.iso2);
-                    return (
-                      <Tooltip key={r.iso2} title={r.reasons.join(" · ")}>
-                        <Chip
-                          size="small"
-                          avatar={flag(r.iso2, 18)}
-                          label={nameOf(r.iso2)}
-                          onClick={target ? () => onOpen(target) : undefined}
-                          sx={{ height: 24, border: `1px solid ${color}`, bgcolor: `${color}22`, "& .MuiChip-avatar": { width: 18, height: 13, ml: 0.75 } }}
-                        />
-                      </Tooltip>
-                    );
-                  })}
-                </Box>
-              </Box>
-            );
-          })}
-          <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 150, color: RELATION_STYLE[0].color }}>
-              <SentimentNeutralIcon />
-              <Typography variant="body2" sx={{ fontWeight: 700, color: RELATION_STYLE[0].color }}>
-                {t("def.rel.neutral")} ({Math.max(0, neutralCount)})
-              </Typography>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              {t("def.rel.neutralNote")}
-            </Typography>
-          </Box>
-        </Box>
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-          {t("def.rel.method")}
-        </Typography>
-      </Box>
+      <WikiSection iso2={economy.iso2} domain="military" heading={t("pm.m.wiki")} />
 
       <Typography variant="caption" color="text.secondary">
         {t("def.sources")}{" "}

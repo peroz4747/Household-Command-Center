@@ -2,7 +2,8 @@
 
 // Grafi in številke za okno države (zavihka Gospodarstvo in Obramba).
 import { useEffect, useRef, useState } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
+import type { InfoText } from "../../lib/countryInfo";
 import { useI18n } from "../i18n";
 
 // Rast: statusni barvi (vedno s predznakom); raven: en sam modri odtenek.
@@ -169,6 +170,42 @@ export function Figure({ label, value, sub }: { label: string; value: string; su
           {sub}
         </Typography>
       )}
+    </Box>
+  );
+}
+
+const PREVIEW = 600;
+
+export function InfoBlock({ heading, info }: { heading: string; info: InfoText }) {
+  const { t, lang } = useI18n();
+  const [more, setMore] = useState(false);
+  const long = info.text.length > PREVIEW + 100;
+  const shown = !long || more ? info.text : `${info.text.slice(0, info.text.lastIndexOf(" ", PREVIEW))} …`;
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+        {heading}
+        {info.lang !== lang && (
+          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontWeight: 400 }}>
+            {t("econ.info.otherLang", { lang: info.lang.toUpperCase() })}
+          </Typography>
+        )}
+      </Typography>
+      {shown.split(/\n{2,}/).map((para, i) => (
+        <Typography key={i} variant="body2" sx={{ mb: 1, whiteSpace: "pre-line", lineHeight: 1.6, color: "text.secondary" }}>
+          {para}
+        </Typography>
+      ))}
+      <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        {long && (
+          <Button size="small" onClick={() => setMore(!more)} sx={{ px: 0, minWidth: 0 }}>
+            {more ? t("econ.info.less") : t("econ.info.more")}
+          </Button>
+        )}
+        <Button size="small" href={info.url} target="_blank" rel="noreferrer" sx={{ textTransform: "none" }}>
+          {t("econ.info.source", { title: info.title })} ↗
+        </Button>
+      </Box>
     </Box>
   );
 }

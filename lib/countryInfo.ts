@@ -10,7 +10,7 @@ const MAX_CHARS = 1600;
 const cache = new Map<string, { at: number; data: CountryInfo }>();
 let ids: { at: number; map: Map<string, { country: string; economy: string | null }> } | null = null;
 
-async function getJson(url: string): Promise<any> {
+export async function getJson(url: string): Promise<any> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const res = await fetch(url, { cache: "no-store", headers: UA, signal: AbortSignal.timeout(20_000) });
     if (res.status === 429) {
@@ -24,7 +24,7 @@ async function getJson(url: string): Promise<any> {
 }
 
 /** ISO2 → Wikidata (država in "gospodarstvo države"), ena poizvedba SPARQL za vse države. */
-async function wikidataIds() {
+export async function wikidataIds() {
   if (ids && Date.now() - ids.at < 30 * 86_400_000) return ids.map;
   const query = `SELECT ?iso ?c ?econ WHERE { ?c wdt:P297 ?iso. ?c wdt:P31/wdt:P279* wd:Q6256. OPTIONAL { ?c wdt:P8744 ?econ } }`;
   const body = await getJson(`https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(query)}`);
@@ -40,18 +40,18 @@ async function wikidataIds() {
   return map;
 }
 
-async function sitelinks(qids: string[]): Promise<Record<string, Record<string, string>>> {
+export async function sitelinks(qids: string[]): Promise<Record<string, Record<string, string>>> {
   const body = await getJson(`https://www.wikidata.org/w/api.php?${new URLSearchParams({ action: "wbgetentities", ids: qids.join("|"), props: "sitelinks", sitefilter: "slwiki|enwiki|dewiki", format: "json" })}`);
   const out: Record<string, Record<string, string>> = {};
   for (const [q, e] of Object.entries<any>(body?.entities ?? {})) out[q] = Object.fromEntries(Object.entries<any>(e.sitelinks ?? {}).map(([k, v]) => [k, v.title]));
   return out;
 }
 
-const wiki = (lang: string, params: Record<string, string>) => getJson(`https://${lang}.wikipedia.org/w/api.php?${new URLSearchParams({ format: "json", formatversion: "2", ...params })}`);
-const pageUrl = (lang: string, title: string) => `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+export const wiki = (lang: string, params: Record<string, string>) => getJson(`https://${lang}.wikipedia.org/w/api.php?${new URLSearchParams({ format: "json", formatversion: "2", ...params })}`);
+export const pageUrl = (lang: string, title: string) => `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 
 /** Skrajša na celo poved do MAX_CHARS. */
-function trim(text: string): string {
+export function trim(text: string): string {
   const t = text.replace(/\n{3,}/g, "\n\n").trim();
   if (t.length <= MAX_CHARS) return t;
   const cut = t.slice(0, MAX_CHARS);
@@ -59,14 +59,14 @@ function trim(text: string): string {
   return `${cut.slice(0, end > 400 ? end + 1 : MAX_CHARS).trim()} …`;
 }
 
-async function intro(lang: string, title: string): Promise<InfoText | null> {
+export async function intro(lang: string, title: string): Promise<InfoText | null> {
   const body = await wiki(lang, { action: "query", prop: "extracts", exintro: "1", explaintext: "1", titles: title, redirects: "1" });
   const page = body?.query?.pages?.[0];
   const text = String(page?.extract ?? "").trim();
   return text.length > 80 ? { text: trim(text), url: pageUrl(lang, page.title), lang, title: page.title } : null;
 }
 
-const decode = (s: string) =>
+export const decode = (s: string) =>
   s
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&nbsp;/g, " ")
@@ -75,28 +75,30 @@ const decode = (s: string) =>
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
 
-/** Poglavje "Gospodarstvo" slovenskega članka (brez tabel, slik, sklicev in povezav na urejanje). */
-async function economySection(title: string): Promise<InfoText | null> {
-  const s = await wiki("sl", { action: "parse", page: title, prop: "sections", redirects: "1" });
-  const sec = (s?.parse?.sections ?? []).find((x: any) => /^(gospodarstvo|ekonomija)$/i.test(String(x.line).replace(/<[^>]+>/g, "").trim()));
+/** Besedilo poglavja članka, katerega naslov ustreza vzorcu (brez tabel, slik, sklicev in povezav na urejanje). */
+export async function sectionText(lang: string, title: string, match: RegExp): Promise<InfoText | null> {
+  const s = await wiki(lang, { action: "parse", page: title, prop: "sections", redirects: "1" });
+  const sec = (s?.parse?.sections ?? []).find((x: any) => match.test(String(x.line).replace(/<[^>]+>/g, "").trim()));
   if (!sec) return null;
-  const t = await wiki("sl", { action: "parse", page: s.parse.title, section: String(sec.index), prop: "text", disabletoc: "1" });
+  const t = await wiki(lang, { action: "parse", page: s.parse.title, section: String(sec.index), prop: "text", disabletoc: "1" });
   const html = String(t?.parse?.text ?? "");
   const text = decode(
     html
       .replace(/<(sup|table|style|figure|h\d)[\s\S]*?<\/\1>/g, "")
-      .replace(/<div class="[^"]*(thumb|hatnote|navbox|reflist|mw-heading)[^"]*"[\s\S]*?<\/div>/g, "")
+      .replace(/<div class="[^"]*(thumb|hatnote|navbox|reflist|mw-heading|gallery)[^"]*"[\s\S]*?<\/div>/g, "")
       .replace(/<span class="mw-editsection[\s\S]*?<\/span>\s*<\/span>/g, "")
       .replace(/<li>/g, "\n• ")
       .replace(/<\/(p|ul|ol)>/g, "\n\n")
       .replace(/<[^>]+>/g, ""),
   )
-    .replace(/\[(uredi|uredi kodo)( \| uredi kodo)?\]/g, "")
-    .replace(/^\s*Glavni članek:.*$/gm, "")
-    .replace(/\[\d+\]/g, "")
+    .replace(/\[(uredi|uredi kodo|edit)( \| uredi kodo)?\]/g, "")
+    .replace(/^\s*(Glavni članek|Main article|See also|Glej tudi|Further information):.*$/gm, "")
+    .replace(/\[\d+\]|\[[a-z]\]|\[note \d+\]/g, "")
     .trim();
-  return text.length > 80 ? { text: trim(text), url: `${pageUrl("sl", s.parse.title)}#${encodeURIComponent(String(sec.anchor ?? "Gospodarstvo"))}`, lang: "sl", title: s.parse.title } : null;
+  return text.length > 80 ? { text: trim(text), url: `${pageUrl(lang, s.parse.title)}#${encodeURIComponent(String(sec.anchor ?? ""))}`, lang, title: `${s.parse.title} – ${String(sec.line).replace(/<[^>]+>/g, "")}` } : null;
 }
+
+const economySection = (title: string) => sectionText("sl", title, /^(gospodarstvo|ekonomija)$/i);
 
 export async function getCountryInfo(iso2: string, lang: string): Promise<CountryInfo> {
   const key = `${iso2}|${lang}`;

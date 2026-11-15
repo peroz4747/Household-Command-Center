@@ -1,87 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  FormControlLabel,
-  InputAdornment,
-  MenuItem,
-  Switch,
-  ToggleButton,
-  ToggleButtonGroup,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Autocomplete, Box, Card, CardContent, InputAdornment, TextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import ViewListIcon from "@mui/icons-material/ViewList";
-import PublicIcon from "@mui/icons-material/Public";
 import dynamic from "next/dynamic";
 import { useI18n } from "../i18n";
 import type { EconomiesData, Economy } from "../../lib/economies";
-import CountryDialog from "./CountryDialog";
+import CountryDialog, { type TabId } from "./CountryDialog";
 
-// three.js je velik, zato se globus naloži šele, ko ga uporabnik odpre.
+// Svetovni pregled: globus držav; klik ali iskanje odpre profil države po okviru PMESII-PT.
+// three.js je velik, zato se globus naloži šele v brskalniku.
 const WorldGlobe = dynamic(() => import("./WorldGlobe"), { ssr: false });
 
 const UP = "#22c55e";
 const DOWN = "#f87171";
-const FLAT = "#94a3b8";
-const BAR = "#3987e5"; // magnituda (BDP): en sam odtenek
 const HOME = "SI";
-const PAGE = 25;
-
-type SortKey = "gdpUsd" | "gdpPerCapitaUsd" | "growthYear" | "qoq" | "yoyQ" | "milPct" | "name";
-
-const REGIONS = [
-  "Europe & Central Asia",
-  "East Asia & Pacific",
-  "North America",
-  "Latin America & Caribbean",
-  "Middle East, North Africa, Afghanistan & Pakistan",
-  "South Asia",
-  "Sub-Saharan Africa",
-];
-
-
-function Pct({ v, title }: { v: number | null; title?: string }) {
-  const { locale } = useI18n();
-  if (v === null) return <Box component="span" sx={{ color: "text.disabled" }}>–</Box>;
-  const color = Math.abs(v) < 0.05 ? FLAT : v > 0 ? UP : DOWN;
-  const text = `${v > 0.05 ? "▲ +" : v < -0.05 ? "▼ " : ""}${v.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
-  const el = (
-    <Box component="span" sx={{ color, fontWeight: 700 }}>
-      {text}
-    </Box>
-  );
-  return title ? <Tooltip title={title}>{el}</Tooltip> : el;
-}
 
 export default function WorldEconomies() {
   const { t, locale } = useI18n();
   const [data, setData] = useState<EconomiesData | null>(null);
   const [error, setError] = useState(false);
-  const [query, setQuery] = useState("");
-  const [region, setRegion] = useState("");
-  const [onlyQuarterly, setOnlyQuarterly] = useState(false);
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "gdpUsd", dir: "desc" });
-  const [all, setAll] = useState(false);
   const [open, setOpen] = useState<Economy | null>(null);
-  const [openTab, setOpenTab] = useState<"economy" | "defense">("economy");
-  const show = (e: Economy, tab: "economy" | "defense" = "economy") => {
-    setOpenTab(tab);
-    setOpen(e);
-  };
-  const [view, setView] = useState<"list" | "globe">("list");
+  const [openTab, setOpenTab] = useState<TabId>("politics");
 
   useEffect(() => {
     fetch("/api/economies", { cache: "no-store" })
@@ -89,6 +29,11 @@ export default function WorldEconomies() {
       .then((d) => (d.error ? setError(true) : setData(d)))
       .catch(() => setError(true));
   }, []);
+
+  const show = (e: Economy, tab: TabId = "politics") => {
+    setOpenTab(tab);
+    setOpen(e);
+  };
 
   const names = useMemo(() => {
     try {
@@ -111,93 +56,14 @@ export default function WorldEconomies() {
     return { gdp: new Map(byGdp.map((e, i) => [e.iso2, i + 1])), pc: new Map(byPc.map((e, i) => [e.iso2, i + 1])) };
   }, [data]);
 
-  if (error) return null;
+  const sorted = useMemo(() => [...(data?.items ?? [])].sort((a, b) => nameOf(a).localeCompare(nameOf(b), locale)), [data, locale]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const q = query.trim().toLowerCase();
-  const filtered = (data?.items ?? [])
-    .filter((e) => (!region || e.region === region) && (!onlyQuarterly || e.qoq !== null))
-    .filter((e) => !q || nameOf(e).toLowerCase().includes(q) || e.name.toLowerCase().includes(q) || e.iso3.toLowerCase() === q)
-    .sort((a, b) => {
-      if (sort.key === "name") return (sort.dir === "asc" ? 1 : -1) * nameOf(a).localeCompare(nameOf(b), locale);
-      const x = a[sort.key];
-      const y = b[sort.key];
-      if (x === null && y === null) return 0;
-      if (x === null) return 1; // brez podatka vedno na konec
-      if (y === null) return -1;
-      return sort.dir === "asc" ? x - y : y - x;
-    });
-  const shown = all || q ? filtered : filtered.slice(0, PAGE);
-  const home = filtered.find((e) => e.iso2 === HOME);
-  const homeHidden = home && !shown.includes(home);
-  const maxGdp = Math.max(1, ...(data?.items ?? []).map((e) => e.gdpUsd ?? 0));
-  const si = data?.items.find((e) => e.iso2 === HOME);
+  if (error) return null;
 
   const money = (n: number | null, compact = true) =>
     n === null ? "–" : n.toLocaleString(locale, compact ? { notation: "compact", maximumFractionDigits: n >= 1e12 ? 2 : 1, style: "currency", currency: "USD" } : { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-  const head = (key: SortKey, label: string, align: "left" | "right" = "right", tip?: string) => (
-    <TableCell align={align} sortDirection={sort.key === key ? sort.dir : false}>
-      <Tooltip title={tip ?? ""}>
-        <TableSortLabel active={sort.key === key} direction={sort.key === key ? sort.dir : "desc"} onClick={() => setSort({ key, dir: sort.key === key && sort.dir === "desc" ? "asc" : "desc" })}>
-          {label}
-        </TableSortLabel>
-      </Tooltip>
-    </TableCell>
-  );
-  const row = (e: Economy, pinned = false) => (
-    <TableRow
-      key={e.iso2 + (pinned ? "-pin" : "")}
-      hover
-      onClick={() => show(e)}
-      sx={{ cursor: "pointer", ...(e.iso2 === HOME ? { bgcolor: "rgba(57,135,229,0.12)" } : {}) }}
-    >
-      <TableCell sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{ranked.gdp.get(e.iso2) ?? "–"}</TableCell>
-      <TableCell>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {/* Slike namesto emoji: Windows emoji zastav ne prikaže. */}
-          <Box component="img" src={`https://flagcdn.com/w40/${e.iso2.toLowerCase()}.png`} alt="" loading="lazy" sx={{ width: 20, height: 14, objectFit: "cover", borderRadius: "2px", flexShrink: 0, boxShadow: "0 0 0 1px rgba(148,163,184,0.25)" }} />
-          <Typography variant="body2" sx={{ fontWeight: e.iso2 === HOME ? 700 : 500 }}>
-            {nameOf(e)}
-          </Typography>
-          {e.conflict && (
-            <Tooltip title={e.conflict === "war" ? t("econ.conflict.war") : t("econ.conflict.minor")}>
-              <Box component="span" sx={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, bgcolor: e.conflict === "war" ? "#b91c1c" : "#ef4444", boxShadow: "0 0 0 2px rgba(239,68,68,0.25)" }} />
-            </Tooltip>
-          )}
-        </Box>
-      </TableCell>
-      <TableCell align="right" sx={{ minWidth: 150 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, justifyContent: "flex-end" }}>
-          <Box sx={{ flex: 1, maxWidth: 80, height: 6, borderRadius: 3, bgcolor: "rgba(148,163,184,0.12)", overflow: "hidden" }}>
-            <Box sx={{ width: `${Math.max(2, ((e.gdpUsd ?? 0) / maxGdp) * 100)}%`, height: "100%", bgcolor: BAR, borderRadius: 3 }} />
-          </Box>
-          <Typography variant="body2" sx={{ fontVariantNumeric: "tabular-nums", minWidth: 72 }}>
-            {money(e.gdpUsd)}
-          </Typography>
-        </Box>
-      </TableCell>
-      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
-        {money(e.gdpPerCapitaUsd, false)}
-        {e.gdpPerCapitaUsd !== null && (
-          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
-            #{ranked.pc.get(e.iso2)}
-          </Typography>
-        )}
-      </TableCell>
-      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
-        <Pct v={e.growthYear} title={e.growthYearOf ? t("econ.yearOf", { year: e.growthYearOf }) : undefined} />
-      </TableCell>
-      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
-        <Pct v={e.qoq} />
-      </TableCell>
-      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums" }}>
-        <Pct v={e.yoyQ} />
-      </TableCell>
-      <TableCell align="right" sx={{ fontVariantNumeric: "tabular-nums", color: "text.secondary" }}>
-        {e.milPct !== null ? `${e.milPct.toLocaleString(locale, { maximumFractionDigits: 1 })} %` : "–"}
-      </TableCell>
-      <TableCell sx={{ color: "text.secondary", fontSize: 12 }}>{e.quarter ? `${e.quarter.replace("-", " ")}${e.quarterSource ? ` · ${e.quarterSource}` : ""}` : ""}</TableCell>
-    </TableRow>
-  );
+  const si = data?.items.find((e) => e.iso2 === HOME);
+  const wars = data?.items.filter((e) => e.conflict === "war").length ?? 0;
 
   return (
     <Card>
@@ -211,9 +77,6 @@ export default function WorldEconomies() {
               {t("econ.title")}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              {t("econ.source", { year: data?.items.find((e) => e.gdpYear)?.gdpYear ?? "–" })}
-            </Typography>
-            <Typography variant="caption" color="secondary">
               {t("econ.clickHint")}
             </Typography>
           </Box>
@@ -223,6 +86,7 @@ export default function WorldEconomies() {
                 [t("econ.world"), money(data.worldGdpUsd)],
                 [t("econ.siRank"), `#${ranked.gdp.get(HOME)} · ${money(si.gdpUsd)}`],
                 [t("econ.siPc"), `#${ranked.pc.get(HOME)} · ${money(si.gdpPerCapitaUsd, false)}`],
+                [t("econ.warsNow"), String(wars)],
               ].map(([label, value]) => (
                 <Box key={label}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
@@ -235,98 +99,42 @@ export default function WorldEconomies() {
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                   {t("econ.siQuarter", { q: si.quarter?.replace("-", " ") ?? "–" })}
                 </Typography>
-                <Typography sx={{ fontWeight: 700 }}>
-                  <Pct v={si.qoq} />
+                <Typography sx={{ fontWeight: 700, color: (si.qoq ?? 0) >= 0 ? UP : DOWN }}>
+                  {si.qoq === null ? "–" : `${si.qoq > 0 ? "▲ +" : "▼ "}${si.qoq.toLocaleString(locale, { maximumFractionDigits: 1 })} %`}
                 </Typography>
               </Box>
             </Box>
           )}
         </Box>
 
-        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", alignItems: "center", mb: 1 }}>
-          <ToggleButtonGroup size="small" exclusive value={view} onChange={(_, v) => v && setView(v)}>
-            <Tooltip title={t("econ.view.list")}>
-              <ToggleButton value="list" aria-label={t("econ.view.list")}>
-                <ViewListIcon fontSize="small" />
-              </ToggleButton>
-            </Tooltip>
-            <Tooltip title={t("econ.view.globe")}>
-              <ToggleButton value="globe" aria-label={t("econ.view.globe")}>
-                <PublicIcon fontSize="small" />
-              </ToggleButton>
-            </Tooltip>
-          </ToggleButtonGroup>
-          {view === "list" && (
-          <>
-          <TextField
-            size="small"
-            placeholder={t("econ.search")}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
-            sx={{ minWidth: 220 }}
-          />
-          <TextField select size="small" label={t("econ.region")} value={region} onChange={(e) => setRegion(e.target.value)} sx={{ minWidth: 240 }}>
-            <MenuItem value="">{t("econ.allRegions")}</MenuItem>
-            {REGIONS.map((r) => (
-              <MenuItem key={r} value={r}>
-                {(t as unknown as (k: string) => string)(`econ.region.${REGIONS.indexOf(r)}`)}
-              </MenuItem>
-            ))}
-          </TextField>
-          <FormControlLabel control={<Switch checked={onlyQuarterly} onChange={(e) => setOnlyQuarterly(e.target.checked)} />} label={t("econ.onlyQuarterly")} />
-          </>
+        <Autocomplete
+          size="small"
+          options={sorted}
+          getOptionLabel={(e) => nameOf(e)}
+          onChange={(_, e) => e && show(e)}
+          value={null}
+          blurOnSelect
+          sx={{ maxWidth: 360, mb: 1.5 }}
+          renderOption={(props, e) => (
+            <Box component="li" {...props} key={e.iso2} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <Box component="img" src={`https://flagcdn.com/w40/${e.iso2.toLowerCase()}.png`} alt="" loading="lazy" sx={{ width: 20, height: 14, objectFit: "cover", borderRadius: "2px" }} />
+              {nameOf(e)}
+            </Box>
           )}
-        </Box>
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              placeholder={t("econ.search")}
+              slotProps={{ input: { ...params.InputProps, startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> } }}
+            />
+          )}
+        />
 
-        {data && view === "globe" ? (
-          <WorldGlobe items={data.items} onSelect={(e, tab) => show(e, tab)} />
-        ) : !data ? (
-          <Typography color="text.secondary">{t("common.loading")}</Typography>
-        ) : (
-          <>
-            <Box sx={{ overflowX: "auto" }}>
-              <Table size="small" sx={{ "& td, & th": { borderColor: "rgba(148,163,184,0.12)", whiteSpace: "nowrap" } }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>#</TableCell>
-                    {head("name", t("econ.country"), "left")}
-                    {head("gdpUsd", t("econ.gdp"), "right", t("econ.gdpTip"))}
-                    {head("gdpPerCapitaUsd", t("econ.gdpPc"))}
-                    {head("growthYear", t("econ.growthYear"), "right", t("econ.growthYearTip"))}
-                    {head("qoq", t("econ.qoq"), "right", t("econ.qoqTip"))}
-                    {head("yoyQ", t("econ.yoyQ"), "right", t("econ.yoyQTip"))}
-                    {head("milPct", t("econ.milPct"), "right", t("econ.milPctTip"))}
-                    <TableCell>{t("econ.quarter")}</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {shown.map((e) => row(e))}
-                  {homeHidden && (
-                    <>
-                      <TableRow>
-                        <TableCell colSpan={9} sx={{ py: 0.25, textAlign: "center", color: "text.disabled" }}>
-                          ⋯
-                        </TableCell>
-                      </TableRow>
-                      {row(home!, true)}
-                    </>
-                  )}
-                </TableBody>
-              </Table>
-            </Box>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 1, gap: 2, flexWrap: "wrap" }}>
-              <Typography variant="caption" color="text.secondary">
-                {t("econ.note")}
-              </Typography>
-              {!q && filtered.length > PAGE && (
-                <Button size="small" onClick={() => setAll(!all)}>
-                  {all ? t("econ.showLess") : t("econ.showAll", { n: filtered.length })}
-                </Button>
-              )}
-            </Box>
-          </>
-        )}
+        {data ? <WorldGlobe items={data.items} onSelect={(e, tab) => show(e, tab === "defense" ? "military" : tab === "economy" ? "economy" : "politics")} /> : <Typography color="text.secondary">{t("common.loading")}</Typography>}
+
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          {t("pm.sources")}
+        </Typography>
       </CardContent>
       {open && (
         <CountryDialog
@@ -335,7 +143,7 @@ export default function WorldEconomies() {
           name={nameOf(open)}
           ranks={{ gdp: ranked.gdp.get(open.iso2), pc: ranked.pc.get(open.iso2) }}
           items={data?.items ?? []}
-          onOpen={(e) => show(e, "defense")}
+          onOpen={(e, tab) => show(e, tab)}
           initialTab={openTab}
           onClose={() => setOpen(null)}
         />

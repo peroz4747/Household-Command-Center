@@ -7,6 +7,8 @@ export async function register() {
     ]);
     const { startSnapCams } = await import("./lib/snapCams");
     startSnapCams();
+    const { warmProfiles } = await import("./lib/countryProfile");
+    warmProfiles();
     startNewsTopCollector();
     startNotifier();
     startSpeedCollector();
