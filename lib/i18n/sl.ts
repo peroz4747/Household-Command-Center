@@ -1036,6 +1036,8 @@ const sl = {
   "pm.h.wikidataEvents": "Pomembni dogodki (Wikidata)",
   "pm.h.periods": "Zgodovinska obdobja",
   "pm.h.none": "Zgodovine za to državo ni bilo mogoče naložiti.",
+  "econ.globe.zoomIn": "Približaj",
+  "econ.globe.zoomOut": "Oddalji",
 } as const;
 
 export type MessageKey = keyof typeof sl;

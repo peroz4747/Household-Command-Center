@@ -1036,6 +1036,8 @@ const de: Record<MessageKey, string> = {
   "pm.h.wikidataEvents": "Wichtige Ereignisse (Wikidata)",
   "pm.h.periods": "Geschichtliche Epochen",
   "pm.h.none": "Geschichte konnte nicht geladen werden.",
+  "econ.globe.zoomIn": "Vergrößern",
+  "econ.globe.zoomOut": "Verkleinern",
 };
 
 export default de;

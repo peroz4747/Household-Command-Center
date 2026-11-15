@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, ListSubheader, MenuItem, TextField, Typography } from "@mui/material";
+import { Box, IconButton, ListSubheader, MenuItem, TextField, Typography } from "@mui/material";
 import { useI18n } from "../i18n";
 import type { Economy } from "../../lib/economies";
 
@@ -39,6 +39,15 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
   const [metric, setMetric] = useState<GlobeMetric>("gdpPerCapitaUsd");
   const [features, setFeatures] = useState<Feature[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // Globus ustvarimo šele, ko je kartica blizu vidnega dela strani (three.js je zahteven).
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near) return;
+    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && setNear(true), { rootMargin: "300px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
   const byIso = useMemo(() => new Map(items.map((e) => [e.iso2, e])), [items]);
   const names = useMemo(() => {
     try {
@@ -99,13 +108,18 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
   // Globus ustvarimo enkrat; barve in oznake osvežimo ob menjavi kazalnika.
   useEffect(() => {
     const el = ref.current;
-    if (!el || !features) return;
+    if (!el || !features || !near) return;
     let cancelled = false;
     let ro: ResizeObserver | null = null;
+    let io: IntersectionObserver | null = null;
     void Promise.all([import("globe.gl"), import("three")])
       .then(([{ default: Globe }, THREE]) => {
         if (cancelled) return;
-        const g = new (Globe as any)(el, { animateIn: true });
+        // Na telefonih (gostota zaslona 2–3) bi risanje v polni ločljivosti preobremenilo grafiko:
+        // gostoto omejimo na 1,5, glajenje robov je potrebno le pri nizki gostoti.
+        const dpr = window.devicePixelRatio || 1;
+        const g = new (Globe as any)(el, { animateIn: false, rendererConfig: { antialias: dpr < 1.5, powerPreference: "high-performance" } });
+        g.renderer().setPixelRatio(Math.min(dpr, 1.5));
         g.backgroundColor("rgba(0,0,0,0)")
           .showAtmosphere(true)
           .atmosphereColor("#3987e5")
@@ -114,7 +128,8 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
           .polygonSideColor(() => "rgba(15,23,42,0.7)")
           .polygonStrokeColor(() => "rgba(8,15,30,0.9)")
           .polygonAltitude(0.008)
-          .polygonsTransitionDuration(250)
+          .polygonsTransitionDuration(0)
+          .polygonCapCurvatureResolution(8)
           .width(el.clientWidth)
           .height(el.clientHeight);
         (g.globeMaterial() as InstanceType<typeof THREE.MeshPhongMaterial>).color = new THREE.Color(OCEAN);
@@ -123,10 +138,18 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
         controls.autoRotate = true;
         controls.autoRotateSpeed = 0.35;
         controls.enableZoom = true;
+        controls.enableDamping = true;
+        controls.zoomSpeed = 1.2;
+        controls.rotateSpeed = 0.6;
+        // Prsti na globusu upravljajo globus (vrtenje, razpenjanje), ne strani.
+        g.renderer().domElement.style.touchAction = "none";
         // Ob prvem dotiku se samodejno vrtenje ustavi.
         el.addEventListener("pointerdown", () => (controls.autoRotate = false), { once: true });
         ro = new ResizeObserver(() => g.width(el.clientWidth).height(el.clientHeight));
         ro.observe(el);
+        // Ko globus ni viden, ne rišemo (sicer bi animacija ves čas obremenjevala brskalnik).
+        io = new IntersectionObserver((e) => (e.some((x) => x.isIntersecting) ? g.resumeAnimation() : g.pauseAnimation()));
+        io.observe(el);
         globe.current = g;
         setFeatures((f) => (f ? [...f] : f)); // sproži prvo barvanje
       })
@@ -134,6 +157,7 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
     return () => {
       cancelled = true;
       ro?.disconnect();
+      io?.disconnect();
       const g = globe.current;
       globe.current = null;
       try {
@@ -147,7 +171,7 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
     };
     // Globus naj nastane le enkrat, ko so meje naložene.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features === null]);
+  }, [features === null, near]);
 
   useEffect(() => {
     const g = globe.current;
@@ -166,13 +190,14 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
       return `<div style="background:rgba(15,23,42,.95);border:1px solid rgba(148,163,184,.3);border-radius:6px;padding:6px 8px;font:12px system-ui;color:#e2e8f0">
         <b>${esc(name)}</b><br/>${esc(t(`econ.globe.metric.${metric}`))}: <b>${esc(fmt(valueAt(f)))}</b>${e ? `<br/><span style="color:#94a3b8">${esc(t("econ.globe.click"))}</span>` : ""}</div>`;
     };
+    // Osvetlitev pod miško le z barvo: sprememba višine bi na novo sestavila geometrijo vseh držav.
     g.polygonCapColor((f: Feature) => (f === hovered ? "#f8fafc" : colorOf(valueAt(f))))
-      .polygonAltitude((f: Feature) => (f === hovered ? 0.03 : 0.008))
       .polygonLabel(label)
       .onPolygonHover((f: Feature | null) => {
+        if (f === hovered) return;
         hovered = f;
         ref.current!.style.cursor = f && byIso.has(f.properties.iso2) ? "pointer" : "grab";
-        g.polygonCapColor(g.polygonCapColor()).polygonAltitude(g.polygonAltitude());
+        g.polygonCapColor(g.polygonCapColor());
       })
       .onPolygonClick((f: Feature) => {
         const e = byIso.get(f.properties.iso2);
@@ -231,7 +256,28 @@ export default function WorldGlobe({ items, onSelect }: { items: Economy[]; onSe
         </Box>
       </Box>
       <Box sx={{ position: "relative", height: { xs: 420, md: 620 }, borderRadius: 2, overflow: "hidden", bgcolor: "#050b16", cursor: "grab" }}>
-        <Box ref={ref} sx={{ position: "absolute", inset: 0 }} />
+        <Box ref={ref} sx={{ position: "absolute", inset: 0, touchAction: "none" }} />
+        <Box sx={{ position: "absolute", right: 12, top: 12, display: "flex", flexDirection: "column", gap: 1, zIndex: 2 }}>
+          {[
+            ["+", 0.7, t("econ.globe.zoomIn")],
+            ["−", 1.4, t("econ.globe.zoomOut")],
+          ].map(([sign, k, label]) => (
+            <IconButton
+              key={sign as string}
+              aria-label={label as string}
+              onClick={() => {
+                const g = globe.current;
+                if (!g) return;
+                g.controls().autoRotate = false;
+                const pov = g.pointOfView();
+                g.pointOfView({ ...pov, altitude: Math.min(4, Math.max(0.25, pov.altitude * (k as number))) }, 400);
+              }}
+              sx={{ width: 40, height: 40, bgcolor: "rgba(15,23,42,0.85)", border: "1px solid rgba(148,163,184,0.3)", color: "#e2e8f0", fontSize: 22, fontWeight: 700, "&:hover": { bgcolor: "rgba(30,41,59,0.95)" } }}
+            >
+              {sign as string}
+            </IconButton>
+          ))}
+        </Box>
         {(failed || !features) && (
           <Typography color={failed ? "error" : "text.secondary"} sx={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)" }}>
             {failed ? t("econ.globe.error") : t("common.loading")}

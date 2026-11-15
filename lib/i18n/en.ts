@@ -1036,6 +1036,8 @@ const en: Record<MessageKey, string> = {
   "pm.h.wikidataEvents": "Significant events (Wikidata)",
   "pm.h.periods": "Historical periods",
   "pm.h.none": "History could not be loaded for this country.",
+  "econ.globe.zoomIn": "Zoom in",
+  "econ.globe.zoomOut": "Zoom out",
 };
 
 export default en;
