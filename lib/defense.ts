@@ -42,9 +42,12 @@ const RECENT_YEARS = 10;
 
 const involved = (c: Conflict, iso: string): boolean => c.a.includes(iso) || c.b.includes(iso) || c.a2.includes(iso) || c.b2.includes(iso);
 
-/** Trenutni konflikt države: "war", če je imel kateri od njenih trenutnih konfliktov v zadnjem letu ≥1000 žrtev. */
+/**
+ * Trenutni konflikt države, le kot neposredna stran (ne kot podpornica s četami v tuji državi):
+ * "war", če je imel tak konflikt v zadnjem letu ≥1000 žrtev v bojih.
+ */
 export function conflictStatus(iso: string): "war" | "conflict" | null {
-  const now = DATA.conflicts.filter((c) => c.ongoing && (c.aNow.includes(iso) || c.bNow.includes(iso) || c.a2Now.includes(iso) || c.b2Now.includes(iso)));
+  const now = DATA.conflicts.filter((c) => c.ongoing && (c.aNow.includes(iso) || c.bNow.includes(iso)));
   if (!now.length) return null;
   return now.some((c) => (c.recent[String(DATA.maxYear)] ?? 0) >= 1000) ? "war" : "conflict";
 }

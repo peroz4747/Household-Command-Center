@@ -45,14 +45,16 @@ function ConflictCard({ c, iso2, nameOf, maxYear }: { c: DefenseData["conflicts"
   const n = (v: number) => v.toLocaleString(locale);
   const recent = Object.entries(c.recent);
   const maxRecent = Math.max(1, ...recent.map(([, v]) => v));
-  const actor = (name: string) => name.replace(/^Government of /, "").replace(/ \(.*?\)$/, "");
+  // Vlade prevedemo v ime države (npr. "Government of Ukraine" → Ukrajina); uporniške skupine ostanejo v izvirniku.
+  const actor = (name: string, isos: string[]) =>
+    /^Government of /.test(name) && isos.length === 1 ? nameOf(isos[0]) : name.replace(/^Government of /, "").replace(/ \(.*?\)$/, "");
   const sideFlags = (list: string[]) => list.map((i) => <Tooltip key={i} title={nameOf(i)}>{flag(i, 18)}</Tooltip>);
   const mySide = c.a.includes(iso2) || c.a2.includes(iso2) ? "A" : "B";
   return (
     <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "rgba(148,163,184,0.06)", borderLeft: `3px solid ${c.ongoing ? DEATH : "rgba(148,163,184,0.35)"}` }}>
       <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", alignItems: "baseline" }}>
         <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          {actor(c.sideA)} <Box component="span" sx={{ color: "text.secondary", fontWeight: 400 }}>{t("def.vs")}</Box> {actor(c.sideB)}
+          {actor(c.sideA, c.aNow.length ? c.aNow : c.a)} <Box component="span" sx={{ color: "text.secondary", fontWeight: 400 }}>{t("def.vs")}</Box> {actor(c.sideB, c.bNow.length ? c.bNow : c.b)}
         </Typography>
         <Typography variant="caption" sx={{ fontWeight: 700, color: c.ongoing ? DEATH : "text.secondary" }}>
           {c.ongoing ? t("def.ongoing", { from: c.first }) : `${c.first}–${c.last}`}
@@ -99,7 +101,7 @@ function ConflictCard({ c, iso2, nameOf, maxYear }: { c: DefenseData["conflicts"
             {c.ongoing
               ? t("def.outcome.ongoing")
               : c.outcome
-                ? `${c.outcome === 3 || c.outcome === 4 ? tr(`def.outcome.${(c.outcome === 3) === (mySide === "A") ? "won" : "lost"}`, { side: actor(c.outcome === 3 ? c.sideA : c.sideB) }) : tr(`def.outcome.${c.outcome}`)} (${c.outcomeYear})`
+                ? `${c.outcome === 3 || c.outcome === 4 ? tr(`def.outcome.${(c.outcome === 3) === (mySide === "A") ? "won" : "lost"}`, { side: c.outcome === 3 ? actor(c.sideA, c.a) : actor(c.sideB, c.b) }) : tr(`def.outcome.${c.outcome}`)} (${c.outcomeYear})`
                 : t("def.outcome.unknown")}
           </Typography>
         </Box>

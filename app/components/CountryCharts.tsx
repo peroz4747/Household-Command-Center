@@ -98,7 +98,7 @@ export function LevelLine({ points, format, color = LINE }: { points: { label: s
   const { ref, width } = useWidth();
   const [hover, setHover] = useState<number | null>(null);
   if (points.length < 2) return null;
-  const pad = { top: 14, bottom: 22, left: 52, right: 10 };
+  const pad = { top: 14, bottom: 22, left: 72, right: 10 };
   const min = Math.min(...points.map((p) => p.value));
   const max = Math.max(...points.map((p) => p.value));
   const lo = min - (max - min) * 0.08;
