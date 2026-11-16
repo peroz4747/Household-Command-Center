@@ -66,7 +66,9 @@ function hotSteps(critical: boolean, top: string, disk = false): string {
   ];
   return steps.join("\n");
 }
-const DISK_HOT: Record<string, number> = { hdd: 55, ssd: 70, nvme: 75 };
+// HDD v USB ohišju v mirovanju ~45 °C; opozorilo prej, nujno pri 63 °C (varna meja diskov je 60 °C).
+const DISK_HOT: Record<string, number> = { hdd: 50, ssd: 70, nvme: 75 };
+const DISK_CRIT: Record<string, number> = { hdd: 63, ssd: 78, nvme: 83 };
 const FULL_PCT = 90;
 const MORNING_HOUR = 6;
 const sl = translator("sl");
@@ -144,7 +146,7 @@ async function tick(): Promise<void> {
       const limit = DISK_HOT[disk.type] ?? DISK_HOT.ssd;
       const diskKey = `disk:${disk.device}`;
       if (disk.temp !== undefined && disk.temp >= limit) {
-        const critical = disk.temp >= limit + 8;
+        const critical = disk.temp >= (DISK_CRIT[disk.type] ?? limit + 8);
         await once(
           `disktemp:${disk.device}:${critical ? "crit" : "hot"}`,
           critical ? HOUR : 6 * HOUR,
