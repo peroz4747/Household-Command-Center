@@ -18,6 +18,7 @@ import { getTankControl } from "./tankControl";
 import { dailyForecast } from "./forecast";
 import { recordOutage } from "./internetHistory";
 import { saveMorningReport } from "./morningReport";
+import { logNotification } from "./notifyLog";
 
 type State = {
   sent?: Record<string, number>;
@@ -69,6 +70,7 @@ const DISK_HOT: Record<string, number> = { hdd: 50, ssd: 70, nvme: 75 };
 const DISK_CRIT: Record<string, number> = { hdd: 63, ssd: 78, nvme: 83 };
 const FULL_PCT = 90;
 const MORNING_HOUR = 5;
+const MORNING_TITLE = "Dobro jutro";
 
 const TICK_MS = 5 * 60_000;
 const HOUR = 3_600_000;
@@ -86,6 +88,7 @@ export async function sendNotification(title: string, message: string, priority 
     signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({ topic, title, message, priority, click, ...(actions?.length ? { actions } : {}) }),
   }).catch(() => null);
+  if (res?.ok && title !== MORNING_TITLE) await logNotification(title, message).catch(() => {});
   return Boolean(res?.ok);
 }
 
@@ -312,7 +315,7 @@ async function tick(): Promise<void> {
   if (clock.hour === MORNING_HOUR && !sent[`morning:${clock.day}`]) {
     await section(async () => {
       await saveMorningReport(clock.day);
-      if (await sendNotification("Dobro jutro", "Vaše jutranje poročilo je pripravljeno.", 3, `${DASHBOARD_URL}?porocilo=${clock.day}`)) sent[`morning:${clock.day}`] = now;
+      if (await sendNotification(MORNING_TITLE, "Vaše jutranje poročilo je pripravljeno.", 3, `${DASHBOARD_URL}?porocilo=${clock.day}`)) sent[`morning:${clock.day}`] = now;
     });
   }
 

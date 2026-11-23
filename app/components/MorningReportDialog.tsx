@@ -58,6 +58,11 @@ export default function MorningReportDialog() {
   const close = () => setDay(null);
   const time = (iso: string | number) => new Date(iso).toLocaleString(locale, { timeZone: "Europe/Ljubljana", weekday: "short", hour: "2-digit", minute: "2-digit" });
   const dateLabel = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
+  const clock = (ms: number) => new Date(ms).toLocaleTimeString(locale, { timeZone: "Europe/Ljubljana", hour: "2-digit", minute: "2-digit" });
+  const aqiLevel = (aqi: number): MessageKey =>
+    aqi <= 20 ? "report.aqi.good" : aqi <= 40 ? "report.aqi.fair" : aqi <= 60 ? "report.aqi.moderate" : aqi <= 80 ? "report.aqi.poor" : aqi <= 100 ? "report.aqi.veryPoor" : "report.aqi.extreme";
+  const aqiColor = (aqi: number) => (aqi <= 40 ? "success.main" : aqi <= 60 ? "warning.main" : "error.main");
+  const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
   const weatherDesc = (code: number) => {
     const key = `weather.code.${code}` as MessageKey;
     const text = t(key);
@@ -109,6 +114,37 @@ export default function MorningReportDialog() {
                 </Section>
               )}
 
+              {report.sun && (
+                <Section icon="🌅" title={t("report.sun")}>
+                  <Typography>{t("report.sunTimes", { rise: report.sun.sunrise, set: report.sun.sunset })}</Typography>
+                  <Typography color="text.secondary">
+                    {t("report.daylight", { h: Math.floor(report.sun.daylightMin / 60), m: report.sun.daylightMin % 60 })}
+                    {report.sun.changeMin !== null && ` ${t("report.daylightChange", { sign: report.sun.changeMin > 0 ? "+" : report.sun.changeMin < 0 ? "−" : "±", min: Math.abs(report.sun.changeMin) })}`}
+                  </Typography>
+                </Section>
+              )}
+
+              {report.air && report.air.aqi !== null && (
+                <Section icon="🌫" title={t("report.air")}>
+                  <Typography>
+                    <Box component="span" sx={{ color: aqiColor(report.air.aqi), fontWeight: 600 }}>
+                      {t(aqiLevel(report.air.aqi))}
+                    </Box>{" "}
+                    · {t("report.aqi", { aqi: report.air.aqi })}
+                  </Typography>
+                  {report.air.pm10 !== null && report.air.pm25 !== null && (
+                    <Typography variant="body2" color="text.secondary">
+                      {t("report.pm", { pm10: report.air.pm10, pm25: report.air.pm25 })}
+                    </Typography>
+                  )}
+                  {report.air.pollen.length > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      {t("report.pollen", { list: report.air.pollen.map((p) => `${t(`report.pollen.${p.name}` as MessageKey)} ${p.value}`).join(", ") })}
+                    </Typography>
+                  )}
+                </Section>
+              )}
+
               {report.warnings.length > 0 && (
                 <Section icon="⚠️" title={t("report.warnings")}>
                   {report.warnings.map((w, i) => (
@@ -135,6 +171,69 @@ export default function MorningReportDialog() {
                   ))
                 )}
               </Section>
+
+              {report.car && (
+                <Section icon="🚗" title={t("report.car")}>
+                  {report.car.fuelPercent !== null && (
+                    <Typography>{t("report.carFuel", { pct: report.car.fuelPercent, km: report.car.rangeKm ?? "?" })}</Typography>
+                  )}
+                  {report.car.locked !== null && (
+                    <Typography sx={{ color: report.car.locked ? "text.primary" : "error.main", fontWeight: report.car.locked ? 400 : 600 }}>
+                      {report.car.locked ? `🔒 ${t("report.carLocked")}` : `🔓 ${t("report.carUnlocked")}`}
+                    </Typography>
+                  )}
+                  {report.car.doorsOpen && <Typography sx={{ color: "error.main", fontWeight: 600 }}>{t("report.carDoorsOpen")}</Typography>}
+                  {report.car.windowsOpen && <Typography sx={{ color: "error.main", fontWeight: 600 }}>{t("report.carWindowsOpen")}</Typography>}
+                  {report.car.tyresWarning && <Typography sx={{ color: "warning.main" }}>{t("report.carTyres")}</Typography>}
+                  {(report.car.address || report.car.capturedAt) && (
+                    <Typography variant="body2" color="text.secondary">
+                      {[report.car.address && t("report.carAt", { address: report.car.address.replace(/, Slovenia$/, "") }), report.car.capturedAt && t("report.carData", { time: time(report.car.capturedAt) })]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Typography>
+                  )}
+                </Section>
+              )}
+
+              {report.night && (
+                <Section icon="🖥" title={t("report.night")}>
+                  {report.night.alerts.length === 0 && report.night.outages.length === 0 && (report.night.health?.issues.length ?? 0) === 0 && (
+                    <Typography sx={{ color: "success.main" }}>✅ {t("report.nightAllOk")}</Typography>
+                  )}
+                  {report.night.alerts.map((a, i) => (
+                    <Typography key={`a${i}`}>
+                      <Box component="span" sx={{ color: "text.secondary", display: "inline-block", minWidth: 52 }}>
+                        {clock(a.at)}
+                      </Box>
+                      <b>{a.title}</b>: {a.message}
+                    </Typography>
+                  ))}
+                  {report.night.outages.map((o, i) => (
+                    <Typography key={`o${i}`} sx={{ color: "warning.main" }}>
+                      {t("report.outage", { from: clock(o.from), to: clock(o.to) })}
+                    </Typography>
+                  ))}
+                  {report.night.health && report.night.health.issues.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      {t("report.healthOk")}
+                    </Typography>
+                  )}
+                  {report.night.health?.issues.map((c, i) => (
+                    <Typography key={`h${i}`} sx={{ color: c.status === "fail" ? "error.main" : "warning.main" }}>
+                      {c.label}: {c.detail}
+                    </Typography>
+                  ))}
+                  {report.night.speed && (
+                    <Typography variant="body2" color="text.secondary">
+                      {t("report.speed", {
+                        down: Math.round(report.night.speed.downloadMbps ?? 0),
+                        up: Math.round(report.night.speed.uploadMbps ?? 0),
+                        ping: Math.round(report.night.speed.pingMs ?? 0),
+                      })}
+                    </Typography>
+                  )}
+                </Section>
+              )}
 
               {report.fuel && (
                 <Section icon="⛽" title={t("report.fuel")}>
@@ -181,6 +280,26 @@ export default function MorningReportDialog() {
                   </Stack>
                 )}
               </Section>
+              {report.markets && report.markets.length > 0 && (
+                <Section icon="📈" title={t("report.markets")}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto auto", columnGap: 2, rowGap: 0.25 }}>
+                    {report.markets.map((m) => (
+                      <Box key={m.name} sx={{ display: "contents" }}>
+                        <Typography variant="body2">{m.name}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: "right" }}>
+                          {m.price.toLocaleString(locale, { maximumFractionDigits: m.price < 10 ? 4 : 2 })}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ textAlign: "right", fontWeight: 600, color: m.changePct === null ? "text.secondary" : m.changePct >= 0 ? "success.main" : "error.main" }}
+                        >
+                          {m.changePct === null ? "–" : pct(m.changePct)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Section>
+              )}
             </Stack>
           )}
         </DialogContent>
