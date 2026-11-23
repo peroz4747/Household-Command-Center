@@ -20,6 +20,7 @@ import HeaderClock from "./components/HeaderClock";
 import UtilityUsage from "./components/UtilityUsage";
 import CarStatus from "./components/CarStatus";
 import LanguageSwitcher from "./components/LanguageSwitcher";
+import MorningReportDialog from "./components/MorningReportDialog";
 import { translator } from "../lib/i18n";
 import { getLang } from "../lib/i18n/server";
 
@@ -91,6 +92,7 @@ export default async function Home() {
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: { xs: "center", md: "flex-end" } }}>
           <HeaderClock />
           <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1 }}>
+            <MorningReportDialog />
             <Tooltip title={t("kiosk.open")}>
               <IconButton href="/kiosk" size="small" aria-label={t("kiosk.open")}>
                 <TvIcon fontSize="small" />

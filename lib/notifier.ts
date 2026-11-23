@@ -10,17 +10,14 @@ import { getPcStatus } from "./pcControl";
 import { getServerDetails, type TempSensor } from "./server";
 import { pveGet } from "./proxmox";
 import { getStatus as getTvStatus } from "./tv";
-import { getWarnings, type WeatherWarning } from "./warnings";
+import { getWarnings } from "./warnings";
 import { getFuel } from "./fuel";
 import { getFuelAlert } from "./fuelAlert";
 import { getNetworkOverview } from "./network";
 import { getTankControl } from "./tankControl";
 import { dailyForecast } from "./forecast";
-import { cheapDay, formatWindow } from "./cheapPower";
 import { recordOutage } from "./internetHistory";
-import { getNewsByTopics } from "./newsTop";
-import { translator } from "./i18n";
-import type { MessageKey } from "./i18n";
+import { saveMorningReport } from "./morningReport";
 
 type State = {
   sent?: Record<string, number>;
@@ -72,7 +69,6 @@ const DISK_HOT: Record<string, number> = { hdd: 50, ssd: 70, nvme: 75 };
 const DISK_CRIT: Record<string, number> = { hdd: 63, ssd: 78, nvme: 83 };
 const FULL_PCT = 90;
 const MORNING_HOUR = 5;
-const sl = translator("sl");
 
 const TICK_MS = 5 * 60_000;
 const HOUR = 3_600_000;
@@ -315,8 +311,8 @@ async function tick(): Promise<void> {
 
   if (clock.hour === MORNING_HOUR && !sent[`morning:${clock.day}`]) {
     await section(async () => {
-      const { text, actions } = await morningSummary(clock.day);
-      if (await sendNotification("Dobro jutro", text, 3, DASHBOARD_URL, actions)) sent[`morning:${clock.day}`] = now;
+      await saveMorningReport(clock.day);
+      if (await sendNotification("Dobro jutro", "Vaše jutranje poročilo je pripravljeno.", 3, `${DASHBOARD_URL}?porocilo=${clock.day}`)) sent[`morning:${clock.day}`] = now;
     });
   }
 
@@ -343,77 +339,6 @@ async function tick(): Promise<void> {
 
 // Neurje, veter, sneg in poledica: o teh obvestimo že pri zmerni stopnji (rumeno opozorilo).
 const STORM_ICE = /thunder|storm|wind|snow|ice/i;
-
-const severityLabel: Record<WeatherWarning["severity"], string> = { Moderate: "rumeno", Severe: "oranžno", Extreme: "rdeče" };
-
-/** Top 3 lokalne novice zadnjih 24 ur: najprej zgodbe, ki jih je pokrilo več redakcij, nato najnovejše. */
-async function localNews() {
-  const { items } = await getNewsByTopics("24h", ["maribor"]);
-  return items
-    .map((item, i) => ({ item, i }))
-    .sort((a, b) => b.item.alsoOn.length - a.item.alsoOn.length || a.i - b.i)
-    .slice(0, 3)
-    .map(({ item }) => item);
-}
-
-/** Jutranji povzetek: vreme, koledar, gorivo, cenejša elektrika, opozorila in lokalne novice. */
-async function morningSummary(day: string): Promise<{ text: string; actions: NtfyAction[] }> {
-  const lines: string[] = [];
-  const lat = Number(process.env.WEATHER_LAT ?? 46.5547);
-  const lon = Number(process.env.WEATHER_LON ?? 15.6459);
-  const [weather, events, fuel, warnings] = await Promise.all([
-    dailyForecast(lat, lon).then((d) => d.find((x) => x.date === day) ?? null).catch(() => null),
-    getGoogleCalendar()
-      .events.list({
-        calendarId,
-        timeMin: new Date(ljMidnight(day)).toISOString(),
-        timeMax: new Date(ljMidnight(addDaysIso(day, 1))).toISOString(),
-        singleEvents: true,
-        orderBy: "startTime",
-        maxResults: 8,
-        timeZone: "Europe/Ljubljana",
-      })
-      .then((r) => r.data.items ?? [])
-      .catch(() => null),
-    getFuel().catch(() => null),
-    getWarnings().catch(() => []),
-  ]);
-  const news = await localNews().catch(() => []);
-  if (weather) {
-    const key = `weather.code.${weather.weathercode}` as MessageKey;
-    const desc = sl(key) === key ? "" : `${sl(key)}, `;
-    const rain = weather.precipitationChance !== null && weather.precipitationChance >= 30 ? `, dež ${weather.precipitationChance} %` : "";
-    lines.push(`🌤 ${desc}${Math.round(weather.low)}–${Math.round(weather.high)} °C${rain}`);
-  }
-  if (events) {
-    const fmt = new Intl.DateTimeFormat("sl-SI", { timeZone: "Europe/Ljubljana", hour: "2-digit", minute: "2-digit" });
-    const list = events.slice(0, 5).map((e) => `${e.start?.dateTime ? fmt.format(new Date(e.start.dateTime)) : "ves dan"} ${e.summary ?? "dogodek"}`);
-    lines.push(list.length ? `📅 ${list.join("; ")}` : "📅 Danes ni dogodkov.");
-  }
-  if (fuel) {
-    const change = fuel.change && fuel.change.since >= addDaysIso(day, -7) ? ` (${fuel.change.to > fuel.change.from ? "+" : ""}${(fuel.change.to - fuel.change.from).toFixed(3)} od ${fuel.change.since.slice(8, 10)}. ${fuel.change.since.slice(5, 7)}.)` : "";
-    lines.push(`⛽ 95: ${fuel.price.toFixed(3)} €/l${change}`);
-  }
-  const cheap = cheapDay(day);
-  const flat = cheap.windows.length === 1 && cheap.windows[0].from === 0 && cheap.windows[0].to === 24;
-  lines.push(flat ? "⚡ Elektrika je danes ves dan približno enako poceni (nizka tarifa)." : `⚡ Najcenejša elektrika: ${cheap.windows.map(formatWindow).join(", ")}`);
-  for (const w of warnings.slice(0, 3)) lines.push(`⚠️ ${w.event} (${severityLabel[w.severity]}) do ${new Date(w.expires).toLocaleString("sl-SI", { timeZone: "Europe/Ljubljana", weekday: "short", hour: "2-digit", minute: "2-digit" })}`);
-  if (news.length) lines.push("📰 Lokalno (24 h):", ...news.map((n, i) => `${i + 1}. ${n.title} (${n.category})`));
-  // ntfy dovoli največ 3 gumbe; vsak odpre eno novico.
-  const actions = news.map((n, i): NtfyAction => ({ action: "view", label: `Novica ${i + 1}`, url: n.url }));
-  return { text: lines.join("\n"), actions };
-}
-
-/** Polnoč v Ljubljani za dan YYYY-MM-DD (strežnik teče v UTC). */
-function ljMidnight(day: string): number {
-  for (const offset of ["+01:00", "+02:00"]) {
-    const t = Date.parse(`${day}T00:00:00${offset}`);
-    if (localClock(new Date(t)).hour === 0) return t;
-  }
-  return Date.parse(`${day}T00:00:00Z`);
-}
-
-const addDaysIso = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 
 let running = false;
 const safeTick = async () => {
