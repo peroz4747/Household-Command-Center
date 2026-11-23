@@ -18,6 +18,7 @@ import { getTankControl } from "./tankControl";
 import { dailyForecast } from "./forecast";
 import { cheapDay, formatWindow } from "./cheapPower";
 import { recordOutage } from "./internetHistory";
+import { getNewsByTopics } from "./newsTop";
 import { translator } from "./i18n";
 import type { MessageKey } from "./i18n";
 
@@ -70,7 +71,7 @@ function hotSteps(critical: boolean, top: string, disk = false): string {
 const DISK_HOT: Record<string, number> = { hdd: 50, ssd: 70, nvme: 75 };
 const DISK_CRIT: Record<string, number> = { hdd: 63, ssd: 78, nvme: 83 };
 const FULL_PCT = 90;
-const MORNING_HOUR = 6;
+const MORNING_HOUR = 5;
 const sl = translator("sl");
 
 const TICK_MS = 5 * 60_000;
@@ -314,8 +315,8 @@ async function tick(): Promise<void> {
 
   if (clock.hour === MORNING_HOUR && !sent[`morning:${clock.day}`]) {
     await section(async () => {
-      const text = await morningSummary(clock.day);
-      if (await sendNotification("Dobro jutro", text)) sent[`morning:${clock.day}`] = now;
+      const { text, actions } = await morningSummary(clock.day);
+      if (await sendNotification("Dobro jutro", text, 3, DASHBOARD_URL, actions)) sent[`morning:${clock.day}`] = now;
     });
   }
 
@@ -345,8 +346,18 @@ const STORM_ICE = /thunder|storm|wind|snow|ice/i;
 
 const severityLabel: Record<WeatherWarning["severity"], string> = { Moderate: "rumeno", Severe: "oranžno", Extreme: "rdeče" };
 
-/** Jutranji povzetek: vreme, koledar, gorivo, cenejša elektrika in opozorila. */
-async function morningSummary(day: string): Promise<string> {
+/** Top 3 lokalne novice zadnjih 24 ur: najprej zgodbe, ki jih je pokrilo več redakcij, nato najnovejše. */
+async function localNews() {
+  const { items } = await getNewsByTopics("24h", ["maribor"]);
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => b.item.alsoOn.length - a.item.alsoOn.length || a.i - b.i)
+    .slice(0, 3)
+    .map(({ item }) => item);
+}
+
+/** Jutranji povzetek: vreme, koledar, gorivo, cenejša elektrika, opozorila in lokalne novice. */
+async function morningSummary(day: string): Promise<{ text: string; actions: NtfyAction[] }> {
   const lines: string[] = [];
   const lat = Number(process.env.WEATHER_LAT ?? 46.5547);
   const lon = Number(process.env.WEATHER_LON ?? 15.6459);
@@ -367,6 +378,7 @@ async function morningSummary(day: string): Promise<string> {
     getFuel().catch(() => null),
     getWarnings().catch(() => []),
   ]);
+  const news = await localNews().catch(() => []);
   if (weather) {
     const key = `weather.code.${weather.weathercode}` as MessageKey;
     const desc = sl(key) === key ? "" : `${sl(key)}, `;
@@ -386,7 +398,10 @@ async function morningSummary(day: string): Promise<string> {
   const flat = cheap.windows.length === 1 && cheap.windows[0].from === 0 && cheap.windows[0].to === 24;
   lines.push(flat ? "⚡ Elektrika je danes ves dan približno enako poceni (nizka tarifa)." : `⚡ Najcenejša elektrika: ${cheap.windows.map(formatWindow).join(", ")}`);
   for (const w of warnings.slice(0, 3)) lines.push(`⚠️ ${w.event} (${severityLabel[w.severity]}) do ${new Date(w.expires).toLocaleString("sl-SI", { timeZone: "Europe/Ljubljana", weekday: "short", hour: "2-digit", minute: "2-digit" })}`);
-  return lines.join("\n");
+  if (news.length) lines.push("📰 Lokalno (24 h):", ...news.map((n, i) => `${i + 1}. ${n.title} (${n.category})`));
+  // ntfy dovoli največ 3 gumbe; vsak odpre eno novico.
+  const actions = news.map((n, i): NtfyAction => ({ action: "view", label: `Novica ${i + 1}`, url: n.url }));
+  return { text: lines.join("\n"), actions };
 }
 
 /** Polnoč v Ljubljani za dan YYYY-MM-DD (strežnik teče v UTC). */
