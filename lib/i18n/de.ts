@@ -1072,7 +1072,7 @@ const de: Record<MessageKey, string> = {
   "report.powerFlat": "Den ganzen Tag etwa gleich günstig (Niedertarif).",
   "report.warnings": "Wetterwarnungen",
   "report.until": "bis {time}",
-  "report.news": "Top 3 lokale Nachrichten (24 h)",
+  "report.news": "Top 3 aus Maribor (24 h)",
   "report.noNews": "Keine lokalen Nachrichten in den letzten 24 Stunden.",
   "report.alsoOn": "Auch: {sources}",
   "report.notFound": "Für diesen Tag gibt es keinen Bericht.",
@@ -1152,6 +1152,7 @@ const de: Record<MessageKey, string> = {
   "notif.desc.tyres": "Erinnerung an Winterreifen im Herbst und Sommerreifen im Frühling.",
   "notif.desc.fuel": "Wenn Benzin unter die in der Autokarte gesetzte Grenze fällt.",
   "notif.desc.devicesNight": "Laptop oder TV nach 23:30 noch an.",
+  "report.national": "Top 3 in Slowenien (meistgelesen auf 24ur, 24 h)",
 };
 
 export default de;

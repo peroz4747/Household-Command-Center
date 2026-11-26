@@ -1072,7 +1072,7 @@ const sl = {
   "report.powerFlat": "Ves dan približno enako poceni (nizka tarifa).",
   "report.warnings": "Vremenska opozorila",
   "report.until": "do {time}",
-  "report.news": "Top 3 lokalne novice (24 h)",
+  "report.news": "Top 3 iz Maribora (24 h)",
   "report.noNews": "V zadnjih 24 urah ni lokalnih novic.",
   "report.alsoOn": "Tudi: {sources}",
   "report.notFound": "Poročila za ta dan ni.",
@@ -1152,6 +1152,7 @@ const sl = {
   "notif.desc.tyres": "Opomnik za zimske gume jeseni in letne spomladi.",
   "notif.desc.fuel": "Ko je bencin pod mejo, nastavljeno pri avtu.",
   "notif.desc.devicesNight": "Prenosnik ali televizor je po 23:30 še prižgan.",
+  "report.national": "Top 3 v Sloveniji (najbolj brano na 24ur, 24 h)",
 } as const;
 
 export type MessageKey = keyof typeof sl;

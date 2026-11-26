@@ -6,7 +6,7 @@ import { getWarnings, type WeatherWarning } from "./warnings";
 import { getFuel } from "./fuel";
 import { dailyForecast } from "./forecast";
 import { cheapDay, formatWindow } from "./cheapPower";
-import { getNewsByTopics } from "./newsTop";
+import { getNewsByTopics, getNewsTop } from "./newsTop";
 import { getCar } from "./car";
 import { getInternetHistory } from "./internetHistory";
 import { runHealthCheck } from "./server";
@@ -22,6 +22,8 @@ export type MorningReport = {
   power: { flat: boolean; windows: string[] };
   warnings: { event: string; severity: WeatherWarning["severity"]; expires: string }[];
   news: { title: string; source: string; url: string; lead: string; alsoOn: string[]; published?: number }[];
+  // Top 3 najbolj brane na 24ur.com v zadnjih 24 urah (dodano 26. 11. 2026).
+  national?: { title: string; category: string; url: string; lead: string; alsoOn: string[] }[];
   // Dodano 23. 11. 2026; starejša shranjena poročila teh polj nimajo.
   car?: {
     fuelPercent: number | null;
@@ -60,6 +62,12 @@ function ljMidnight(day: string): number {
     if (ljHour(t) === 0) return t;
   }
   return Date.parse(`${day}T00:00:00Z`);
+}
+
+/** Top 3 najbolj brane novice na 24ur.com (največji slovenski medij) v zadnjih 24 urah. */
+async function nationalNews(): Promise<NonNullable<MorningReport["national"]>> {
+  const { items } = await getNewsTop("24h");
+  return items.slice(0, 3).map((n) => ({ title: n.title, category: n.category, url: n.url, lead: n.lead, alsoOn: n.alsoOn }));
 }
 
 /** Top 3 lokalne novice zadnjih 24 ur: najprej zgodbe, ki jih je pokrilo več redakcij, nato najnovejše. */
@@ -175,6 +183,7 @@ export async function buildMorningReport(day: string): Promise<MorningReport> {
   const lon = Number(process.env.WEATHER_LON ?? 15.6459);
   const fmt = new Intl.DateTimeFormat("sl-SI", { timeZone: "Europe/Ljubljana", hour: "2-digit", minute: "2-digit" });
   const extras = Promise.all([
+    nationalNews().catch(() => []),
     carStatus(day).catch(() => null),
     nightStatus(day),
     sunTimes(day, lat, lon).catch(() => null),
@@ -199,7 +208,7 @@ export async function buildMorningReport(day: string): Promise<MorningReport> {
     getWarnings().catch(() => [] as WeatherWarning[]),
     localNews().catch(() => []),
   ]);
-  const [car, night, sun, air, markets] = await extras;
+  const [national, car, night, sun, air, markets] = await extras;
   const cheap = cheapDay(day);
   const flat = cheap.windows.length === 1 && cheap.windows[0].from === 0 && cheap.windows[0].to === 24;
   return {
@@ -214,6 +223,7 @@ export async function buildMorningReport(day: string): Promise<MorningReport> {
     power: { flat, windows: flat ? [] : cheap.windows.map(formatWindow) },
     warnings: warnings.slice(0, 5).map((w) => ({ event: w.event, severity: w.severity, expires: w.expires })),
     news,
+    national,
     car,
     night,
     sun,

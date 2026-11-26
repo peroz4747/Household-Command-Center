@@ -280,6 +280,29 @@ export default function MorningReportDialog() {
                   </Stack>
                 )}
               </Section>
+
+              {report.national && report.national.length > 0 && (
+                <Section icon="🇸🇮" title={t("report.national")}>
+                  <Stack spacing={1.5}>
+                    {report.national.map((n, i) => (
+                      <Box key={n.url}>
+                        <Link href={n.url} target="_blank" rel="noopener noreferrer" underline="hover" sx={{ fontWeight: 600 }}>
+                          {i + 1}. {n.title}
+                        </Link>
+                        {n.lead && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                            {n.lead}
+                          </Typography>
+                        )}
+                        <Typography variant="caption" color="text.secondary">
+                          24ur{n.category ? ` · ${n.category}` : ""}
+                          {n.alsoOn.length > 0 ? ` · ${t("report.alsoOn", { sources: n.alsoOn.join(", ") })}` : ""}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Section>
+              )}
               {report.markets && report.markets.length > 0 && (
                 <Section icon="📈" title={t("report.markets")}>
                   <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto auto", columnGap: 2, rowGap: 0.25 }}>
