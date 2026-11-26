@@ -19,6 +19,7 @@ import { dailyForecast } from "./forecast";
 import { recordOutage } from "./internetHistory";
 import { saveMorningReport } from "./morningReport";
 import { logNotification } from "./notifyLog";
+import { addDeferred, clearDeferred, getDeferred, getNotifySettings, isQuiet, toMinutes, type NotifyCategory } from "./notifySettings";
 
 type State = {
   sent?: Record<string, number>;
@@ -69,7 +70,6 @@ function hotSteps(critical: boolean, top: string, disk = false): string {
 const DISK_HOT: Record<string, number> = { hdd: 50, ssd: 70, nvme: 75 };
 const DISK_CRIT: Record<string, number> = { hdd: 63, ssd: 78, nvme: 83 };
 const FULL_PCT = 90;
-const MORNING_HOUR = 5;
 const MORNING_TITLE = "Dobro jutro";
 
 const TICK_MS = 5 * 60_000;
@@ -78,9 +78,27 @@ const DAY = 24 * HOUR;
 
 type NtfyAction = { action: "view"; label: string; url: string; clear?: boolean };
 
-export async function sendNotification(title: string, message: string, priority = 3, click = DASHBOARD_URL, actions?: NtfyAction[]): Promise<boolean> {
+/**
+ * Pošlje obvestilo. Z navedeno vrsto (category) veljajo nastavitve obvestil: izklopljena vrsta se ne pošlje,
+ * med tihimi urami se nenujno obvestilo shrani in pošlje v povzetku po koncu tihih ur. Vrne true, ko je obdelano.
+ */
+export async function sendNotification(title: string, message: string, priority = 3, click = DASHBOARD_URL, actions?: NtfyAction[], category?: NotifyCategory): Promise<boolean> {
   const topic = process.env.NTFY_TOPIC;
   if (!topic) return false;
+  if (category) {
+    const settings = await getNotifySettings();
+    if (!settings.enabled[category]) {
+      if (category !== "morning") await logNotification(title, message).catch(() => {});
+      return true;
+    }
+    const clock = localClock(new Date());
+    const urgent = priority >= 5 && settings.quiet.allowUrgent;
+    if (category !== "morning" && !urgent && isQuiet(settings, clock.hour * 60 + clock.minute)) {
+      await addDeferred({ at: Date.now(), title, message: message.split("\n")[0].slice(0, 200) });
+      await logNotification(title, message).catch(() => {});
+      return true;
+    }
+  }
   const res = await fetch(process.env.NTFY_URL ?? "https://ntfy.sh/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -88,7 +106,8 @@ export async function sendNotification(title: string, message: string, priority 
     signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({ topic, title, message, priority, click, ...(actions?.length ? { actions } : {}) }),
   }).catch(() => null);
-  if (res?.ok && title !== MORNING_TITLE) await logNotification(title, message).catch(() => {});
+  // Beležimo le opozorila (ne jutranjega poročila, povzetka tihih ur ali ročno poslanih stvari, npr. izletov).
+  if (res?.ok && category && category !== "morning") await logNotification(title, message).catch(() => {});
   return Boolean(res?.ok);
 }
 
@@ -119,35 +138,50 @@ async function tick(): Promise<void> {
   const state: State = raw && !Array.isArray(raw) ? raw : {};
   const sent = state.sent ?? {};
   const now = Date.now();
-  const once = async (key: string, ttl: number, title: string, message: string, priority = 3, actions?: NtfyAction[]) => {
+  const once = async (category: NotifyCategory, key: string, ttl: number, title: string, message: string, priority = 3, actions?: NtfyAction[]) => {
     if (sent[key] && now - sent[key] < ttl) return;
-    if (await sendNotification(title, message, priority, DASHBOARD_URL, actions)) sent[key] = now;
+    if (await sendNotification(title, message, priority, DASHBOARD_URL, actions, category)) sent[key] = now;
   };
+  const notify = (category: NotifyCategory, title: string, message: string, priority = 3) => sendNotification(title, message, priority, DASHBOARD_URL, undefined, category);
   const section = async (fn: () => Promise<void>) => fn().catch(() => {});
   const clock = localClock(new Date(now));
+  const settings = await getNotifySettings();
+
+  // Po koncu tihih ur pošljemo povzetek obvestil, ki so se zbrala.
+  if (!isQuiet(settings, clock.hour * 60 + clock.minute)) {
+    await section(async () => {
+      const deferred = await getDeferred();
+      if (!deferred.length) return;
+      const fmt = new Intl.DateTimeFormat("sl-SI", { timeZone: "Europe/Ljubljana", hour: "2-digit", minute: "2-digit" });
+      const lines = deferred.slice(-10).map((n) => `${fmt.format(new Date(n.at))} ${n.title}: ${n.message}`);
+      if (deferred.length > 10) lines.unshift(`… in še ${deferred.length - 10} starejših`);
+      if (await sendNotification(`Med tihimi urami (${deferred.length})`, lines.join("\n"))) await clearDeferred();
+    });
+  }
 
   await section(async () => {
     const details = await getServerDetails();
     const badPools = new Set(state.poolsAlerted ?? []);
     for (const pool of details.pools) {
       if (pool.health !== "ONLINE") {
-        await once(`pool:${pool.name}:${pool.health}`, 6 * HOUR, "Težava z ZFS bazenom", `Bazen ${pool.name} je v stanju ${pool.health}. Na dashboardu ga lahko varno izklopiš in znova vklopiš.`, 5);
+        await once("storage", `pool:${pool.name}:${pool.health}`, 6 * HOUR, "Težava z ZFS bazenom", `Bazen ${pool.name} je v stanju ${pool.health}. Na dashboardu ga lahko varno izklopiš in znova vklopiš.`, 5);
         badPools.add(pool.name);
       } else if (badPools.delete(pool.name)) {
-        await sendNotification("ZFS bazen spet deluje", `Bazen ${pool.name} je znova ONLINE.`);
+        await notify("storage", "ZFS bazen spet deluje", `Bazen ${pool.name} je znova ONLINE.`);
       }
     }
     state.poolsAlerted = [...badPools];
     const hot = new Set(state.hotAlerted ?? []);
     for (const disk of details.disks) {
       if (disk.health && !["PASSED", "OK", "UNKNOWN"].includes(disk.health.toUpperCase())) {
-        await once(`disk:${disk.device}:${disk.health}`, DAY, "Težava z diskom", `${disk.model} (${disk.device}): ${disk.health}.`, 5);
+        await once("storage", `disk:${disk.device}:${disk.health}`, DAY, "Težava z diskom", `${disk.model} (${disk.device}): ${disk.health}.`, 5);
       }
       const limit = DISK_HOT[disk.type] ?? DISK_HOT.ssd;
       const diskKey = `disk:${disk.device}`;
       if (disk.temp !== undefined && disk.temp >= limit) {
         const critical = disk.temp >= (DISK_CRIT[disk.type] ?? limit + 8);
         await once(
+          "serverTemp",
           `disktemp:${disk.device}:${critical ? "crit" : "hot"}`,
           critical ? HOUR : 6 * HOUR,
           critical ? "NUJNO: disk se močno pregreva" : "Disk se pregreva",
@@ -157,7 +191,7 @@ async function tick(): Promise<void> {
         );
         hot.add(diskKey);
       } else if (disk.temp !== undefined && disk.temp < limit - 3 && hot.delete(diskKey)) {
-        await sendNotification("Temperatura diska je spet normalna", `${disk.model} (${disk.device}): ${disk.temp} °C.`);
+        await notify("serverTemp", "Temperatura diska je spet normalna", `${disk.model} (${disk.device}): ${disk.temp} °C.`);
       }
     }
     // Vsi senzorji hosta; po čipu obvestimo o najbolj vročem (npr. ne 6× za vsako jedro posebej).
@@ -171,6 +205,7 @@ async function tick(): Promise<void> {
         const critical = x.temp >= sensorCritical(x);
         const name = `${SENSOR_NAME[chip.replace(/_.*$/, "")] ?? chip} (${x.label})`;
         await once(
+          "serverTemp",
           `${key}:${critical ? "crit" : "hot"}`,
           critical ? HOUR : 3 * HOUR,
           critical ? "NUJNO: strežnik se močno pregreva" : "Strežnik se pregreva",
@@ -180,18 +215,18 @@ async function tick(): Promise<void> {
         );
         hot.add(key);
       } else if (x.temp < limit - 5 && hot.delete(key)) {
-        await sendNotification("Temperatura strežnika je spet normalna", `${SENSOR_NAME[chip] ?? chip}: ${x.temp.toFixed(0)} °C.`);
+        await notify("serverTemp", "Temperatura strežnika je spet normalna", `${SENSOR_NAME[chip] ?? chip}: ${x.temp.toFixed(0)} °C.`);
       }
     }
     state.hotAlerted = [...hot];
     for (const s of [...details.storages, ...details.pools]) {
       if (s.percent >= FULL_PCT) {
         const step = Math.floor(s.percent / 5) * 5; // novo obvestilo pri vsakih dodatnih 5 %
-        await once(`full:${s.name}:${step}`, 3 * DAY, "Zmanjkuje prostora", `${s.name} je zaseden ${s.percent.toFixed(0)} %.`, 4);
+        await once("storage", `full:${s.name}:${step}`, 3 * DAY, "Zmanjkuje prostora", `${s.name} je zaseden ${s.percent.toFixed(0)} %.`, 4);
       }
     }
     const status = JSON.parse(await fs.readFile("/host-status/status.json", "utf8")) as { failedUnits?: string[] };
-    if (status.failedUnits?.length) await once(`units:${status.failedUnits.join(",")}`, 12 * HOUR, "Storitev ne deluje", status.failedUnits.join(", "), 4);
+    if (status.failedUnits?.length) await once("services", `units:${status.failedUnits.join(",")}`, 12 * HOUR, "Storitev ne deluje", status.failedUnits.join(", "), 4);
   });
 
   await section(async () => {
@@ -205,7 +240,7 @@ async function tick(): Promise<void> {
     ];
     for (const [name, date] of deadlines) {
       const days = Math.round((Date.parse(`${date}T00:00:00Z`) - today) / DAY);
-      if (days === 30 || days === 7 || days === 1) await once(`deadline:${name}:${date}:${days}`, 3 * DAY, `Rok: ${name}`, `${name} poteče čez ${days} dni (${date}).`);
+      if (days === 30 || days === 7 || days === 1) await once("deadlines", `deadline:${name}:${date}:${days}`, 3 * DAY, `Rok: ${name}`, `${name} poteče čez ${days} dni (${date}).`);
     }
   });
 
@@ -222,16 +257,16 @@ async function tick(): Promise<void> {
       const start = event.start?.dateTime;
       if (!start) continue;
       const minutes = Math.max(1, Math.round((new Date(start).getTime() - now) / 60_000));
-      await once(`cal:${event.id}:${start}`, 2 * HOUR, "Dogodek v koledarju", `Čez ${minutes} min: ${event.summary ?? "dogodek"}`);
+      await once("calendar", `cal:${event.id}:${start}`, 2 * HOUR, "Dogodek v koledarju", `Čez ${minutes} min: ${event.summary ?? "dogodek"}`);
     }
   });
 
   if ((clock.hour === 23 && clock.minute >= 30) || clock.hour < 5) {
     await section(async () => {
-      if ((await getPcStatus()).online) await once("night:pc", 10 * HOUR, "Prenosnik je še prižgan", "Prenosnik ponoči še vedno dela.");
+      if ((await getPcStatus()).online) await once("devicesNight", "night:pc", 10 * HOUR, "Prenosnik je še prižgan", "Prenosnik ponoči še vedno dela.");
     });
     await section(async () => {
-      if ((await getTvStatus()).power === "on") await once("night:tv", 10 * HOUR, "Televizor je še prižgan", "Televizor ponoči še vedno dela.");
+      if ((await getTvStatus()).power === "on") await once("devicesNight", "night:tv", 10 * HOUR, "Televizor je še prižgan", "Televizor ponoči še vedno dela.");
     });
   }
 
@@ -239,7 +274,7 @@ async function tick(): Promise<void> {
     // Škoda API ima omejitev 20 klicev na uro, zato avto preverimo samo enkrat na večer.
     sent["car:checked"] = now;
     await section(async () => {
-      if ((await refreshCar()).live?.locked === false) await once("car:unlocked", 20 * HOUR, "Avto ni zaklenjen", "Avto je zvečer odklenjen.", 4);
+      if ((await refreshCar()).live?.locked === false) await once("car", "car:unlocked", 20 * HOUR, "Avto ni zaklenjen", "Avto je zvečer odklenjen.", 4);
     });
   }
 
@@ -261,7 +296,7 @@ async function tick(): Promise<void> {
         const g = guests.find((x) => x.id === id);
         if (runningNow.includes(id) || alerted.has(id) || tankWork) continue;
         const label = g ? `${g.name} (${g.kind === "docker" ? "Docker" : g.id.replace(/^.*\//, "CT/VM ")})` : id;
-        await sendNotification("Kontejner se je ustavil", `${label} ne teče več${g ? ` (stanje: ${g.status})` : " (ni ga več na seznamu)"}.`, 4);
+        await notify("services", "Kontejner se je ustavil", `${label} ne teče več${g ? ` (stanje: ${g.status})` : " (ni ga več na seznamu)"}.`, 4);
         alerted.add(id);
       }
     }
@@ -269,7 +304,7 @@ async function tick(): Promise<void> {
       if (!runningNow.includes(id)) continue;
       alerted.delete(id);
       const g = guests.find((x) => x.id === id);
-      await sendNotification("Kontejner spet teče", `${g?.name ?? id} je znova zagnan.`);
+      await notify("services", "Kontejner spet teče", `${g?.name ?? id} je znova zagnan.`);
     }
     state.running = runningNow;
     state.stoppedAlerted = [...alerted];
@@ -283,7 +318,7 @@ async function tick(): Promise<void> {
     const price = Math.min(fuel.price, best?.price ?? Infinity);
     if (price > below) return;
     const where = best && best.price <= below ? ` Najceneje: ${best.name}, ${best.price.toFixed(3)} €.` : "";
-    await once(`fuel:${below}:${price}`, 7 * DAY, "Bencin je pod tvojo mejo", `95: ${fuel.price.toFixed(3)} €/l (meja ${below.toFixed(3)} €).${where}`);
+    await once("fuel", `fuel:${below}:${price}`, 7 * DAY, "Bencin je pod tvojo mejo", `95: ${fuel.price.toFixed(3)} €/l (meja ${below.toFixed(3)} €).${where}`);
   });
 
   if (clock.hour >= 9 && clock.hour < 21) {
@@ -296,6 +331,7 @@ async function tick(): Promise<void> {
         const late = (month === 11 && dayOfMonth >= 15) || month === 12 || month <= 3;
         const week = Math.floor(Date.parse(clock.day) / (7 * DAY));
         await once(
+          "tyres",
           `tyres:winter:${year}:${late ? `w${week}` : month === 10 ? "oct" : dayOfMonth >= 8 ? "b" : "a"}`,
           5 * DAY,
           "Čas za zimske gume",
@@ -307,15 +343,19 @@ async function tick(): Promise<void> {
         const week = Math.floor(Date.parse(clock.day) / (7 * DAY));
         const days = await dailyForecast(Number(process.env.WEATHER_LAT ?? 46.5547), Number(process.env.WEATHER_LON ?? 15.6459)).catch(() => []);
         const warm = days.slice(0, 7).length >= 5 && days.slice(0, 7).every((d) => d.low >= 3 && d.high >= 12);
-        if (warm) await once(`tyres:summer:${year}:w${week}`, 6 * DAY, "Čas za letne gume", "Naslednji teden bo toplo (jutra nad 3 °C). Zimske gume lahko zamenjaš z letnimi.");
+        if (warm) await once("tyres", `tyres:summer:${year}:w${week}`, 6 * DAY, "Čas za letne gume", "Naslednji teden bo toplo (jutra nad 3 °C). Zimske gume lahko zamenjaš z letnimi.");
       }
     });
   }
 
-  if (clock.hour === MORNING_HOUR && !sent[`morning:${clock.day}`]) {
+  // Jutranje poročilo ob nastavljeni uri (zamuda do ene ure, npr. po ponovnem zagonu, je še v redu).
+  const minutesNow = clock.hour * 60 + clock.minute;
+  const morningAt = toMinutes(settings.morningAt);
+  if (minutesNow >= morningAt && minutesNow < morningAt + 60 && !sent[`morning:${clock.day}`]) {
     await section(async () => {
+      if (!settings.enabled.morning) return void (sent[`morning:${clock.day}`] = now);
       await saveMorningReport(clock.day);
-      if (await sendNotification(MORNING_TITLE, "Vaše jutranje poročilo je pripravljeno.", 3, `${DASHBOARD_URL}?porocilo=${clock.day}`)) sent[`morning:${clock.day}`] = now;
+      if (await sendNotification(MORNING_TITLE, "Vaše jutranje poročilo je pripravljeno.", 3, `${DASHBOARD_URL}?porocilo=${clock.day}`, undefined, "morning")) sent[`morning:${clock.day}`] = now;
     });
   }
 
@@ -324,7 +364,7 @@ async function tick(): Promise<void> {
       if (state.internetDownSince) {
         const minutes = Math.round((now - state.internetDownSince) / 60_000);
         await recordOutage(state.internetDownSince, now).catch(() => {});
-        if (minutes >= 5) await sendNotification("Internet spet deluje", `Povezava ni delovala približno ${minutes} min.`);
+        if (minutes >= 5) await notify("internet", "Internet spet deluje", `Povezava ni delovala približno ${minutes} min.`);
         state.internetDownSince = null;
       }
     } else if (!state.internetDownSince) state.internetDownSince = now;
@@ -332,7 +372,7 @@ async function tick(): Promise<void> {
 
   await section(async () => {
     for (const warning of await getWarnings()) {
-      if (warning.severity !== "Moderate" || STORM_ICE.test(warning.event)) await once(`warn:${warning.id}`, DAY, "Vremensko opozorilo", `${warning.event} (${warning.severity}) do ${new Date(warning.expires).toLocaleString("sl-SI", { timeZone: "Europe/Ljubljana" })}.`, 4);
+      if (warning.severity !== "Moderate" || STORM_ICE.test(warning.event)) await once("weather", `warn:${warning.id}`, DAY, "Vremensko opozorilo", `${warning.event} (${warning.severity}) do ${new Date(warning.expires).toLocaleString("sl-SI", { timeZone: "Europe/Ljubljana" })}.`, 4);
     }
   });
 

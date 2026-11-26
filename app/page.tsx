@@ -21,6 +21,7 @@ import UtilityUsage from "./components/UtilityUsage";
 import CarStatus from "./components/CarStatus";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import MorningReportDialog from "./components/MorningReportDialog";
+import NotificationSettings from "./components/NotificationSettings";
 import { translator } from "../lib/i18n";
 import { getLang } from "../lib/i18n/server";
 
@@ -93,6 +94,7 @@ export default async function Home() {
           <HeaderClock />
           <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1 }}>
             <MorningReportDialog />
+            <NotificationSettings />
             <Tooltip title={t("kiosk.open")}>
               <IconButton href="/kiosk" size="small" aria-label={t("kiosk.open")}>
                 <TvIcon fontSize="small" />
